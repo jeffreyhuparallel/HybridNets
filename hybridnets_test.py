@@ -50,7 +50,7 @@ if output.endswith("/"):
     output = output[:-1]
 weight = args.load_weights
 img_path = glob(f'{source}/*.jpg') + glob(f'{source}/*.png')
-# img_path = [img_path[0]]  # demo with 1 image
+img_path = [img_path[0]]  # demo with 1 image
 input_imgs = []
 shapes = []
 det_only_imgs = []
@@ -77,6 +77,7 @@ seg_list = params.seg_list
 color_list = standard_to_bgr(STANDARD_COLORS)
 ori_imgs = [cv2.imread(i, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION) for i in img_path]
 ori_imgs = [cv2.cvtColor(i, cv2.COLOR_BGR2RGB) for i in ori_imgs]
+ori_imgs = [cv2.resize(i, (640,384)) for i in ori_imgs]
 print(f"FOUND {len(ori_imgs)} IMAGES")
 # cv2.imwrite('ori.jpg', ori_imgs[0])
 # cv2.imwrite('normalized.jpg', normalized_imgs[0]*255)

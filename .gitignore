@@ -4,3 +4,6 @@
 *.png
 *.pth
 events.out.tfevents.*
+
+datasets/
+demo_result/
