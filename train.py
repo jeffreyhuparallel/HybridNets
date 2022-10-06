@@ -141,7 +141,6 @@ def train(opt):
 
     # load last weights
     ckpt = {}
-    # last_step = None
     if opt.load_weights:
         if opt.load_weights.endswith('.pth'):
             weights_path = opt.load_weights
@@ -150,7 +149,6 @@ def train(opt):
 
         try:
             ckpt = torch.load(weights_path)
-            # new_weight = OrderedDict((k[6:], v) for k, v in ckpt['model'].items())
             model.load_state_dict(ckpt.get('model', ckpt), strict=False)
         except RuntimeError as e:
             print(f'[Warning] Ignoring {e}')
@@ -188,7 +186,6 @@ def train(opt):
         optimizer = torch.optim.AdamW(model.parameters(), opt.lr)
     else:
         optimizer = torch.optim.SGD(model.parameters(), opt.lr, momentum=0.9, nesterov=True)
-    # print(ckpt)
     scaler = torch.cuda.amp.GradScaler(enabled=opt.amp)
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
@@ -202,86 +199,68 @@ def train(opt):
     model.train()
 
     num_iter_per_epoch = len(training_generator)
-    try:
-        for epoch in range(opt.num_epochs):
-            # last_epoch = step // num_iter_per_epoch
-            # if epoch < last_epoch:
-            #     continue
+    for epoch in range(opt.num_epochs):
+        epoch_loss = []
+        progress_bar = tqdm(training_generator, ascii=True)
+        for iter, data in enumerate(progress_bar):
+            imgs = data['img']
+            annot = data['annot']
+            seg_annot = data['segmentation']
 
-            epoch_loss = []
-            progress_bar = tqdm(training_generator, ascii=True)
-            for iter, data in enumerate(progress_bar):
-                # if iter < step - last_epoch * num_iter_per_epoch:
-                #     progress_bar.update()
-                #     continue
-                try:
-                    imgs = data['img']
-                    annot = data['annot']
-                    seg_annot = data['segmentation']
+            imgs = imgs.to(device="cuda", memory_format=torch.channels_last)
+            annot = annot.cuda()
+            seg_annot = seg_annot.cuda()
 
-                    imgs = imgs.to(device="cuda", memory_format=torch.channels_last)
-                    annot = annot.cuda()
-                    seg_annot = seg_annot.cuda()
+            optimizer.zero_grad(set_to_none=True)
+            with torch.cuda.amp.autocast(enabled=opt.amp):
+                cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
+                                                                                                        seg_annot,
+                                                                                                        obj_list=params.obj_list)
+                cls_loss = cls_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
+                reg_loss = reg_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
+                seg_loss = seg_loss.mean() if not opt.freeze_seg else torch.tensor(0, device="cuda")
 
-                    optimizer.zero_grad(set_to_none=True)
-                    with torch.cuda.amp.autocast(enabled=opt.amp):
-                        cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
-                                                                                                                seg_annot,
-                                                                                                                obj_list=params.obj_list)
-                        cls_loss = cls_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
-                        reg_loss = reg_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
-                        seg_loss = seg_loss.mean() if not opt.freeze_seg else torch.tensor(0, device="cuda")
+                loss = cls_loss + reg_loss + seg_loss
+                
+            if loss == 0 or not torch.isfinite(loss):
+                continue
 
-                        loss = cls_loss + reg_loss + seg_loss
-                        
-                    if loss == 0 or not torch.isfinite(loss):
-                        continue
+            scaler.scale(loss).backward()
 
-                    scaler.scale(loss).backward()
+            # Don't have to clip grad norm, since our gradients didn't explode anywhere in the training phases
+            # This worsens the metrics
+            # scaler.unscale_(optimizer)
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
+            scaler.step(optimizer)
+            scaler.update()
 
-                    # Don't have to clip grad norm, since our gradients didn't explode anywhere in the training phases
-                    # This worsens the metrics
-                    # scaler.unscale_(optimizer)
-                    # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
-                    scaler.step(optimizer)
-                    scaler.update()
+            epoch_loss.append(float(loss))
 
-                    epoch_loss.append(float(loss))
+            progress_bar.set_description(
+                'Step: {}. Epoch: {}/{}. Iteration: {}/{}. Cls loss: {:.5f}. Reg loss: {:.5f}. Seg loss: {:.5f}. Total loss: {:.5f}'.format(
+                    step, epoch, opt.num_epochs, iter + 1, num_iter_per_epoch, cls_loss.item(),
+                    reg_loss.item(), seg_loss.item(), loss.item()))
+            writer.add_scalars('Loss', {'train': loss}, step)
+            writer.add_scalars('Regression_loss', {'train': reg_loss}, step)
+            writer.add_scalars('Classfication_loss', {'train': cls_loss}, step)
+            writer.add_scalars('Segmentation_loss', {'train': seg_loss}, step)
 
-                    progress_bar.set_description(
-                        'Step: {}. Epoch: {}/{}. Iteration: {}/{}. Cls loss: {:.5f}. Reg loss: {:.5f}. Seg loss: {:.5f}. Total loss: {:.5f}'.format(
-                            step, epoch, opt.num_epochs, iter + 1, num_iter_per_epoch, cls_loss.item(),
-                            reg_loss.item(), seg_loss.item(), loss.item()))
-                    writer.add_scalars('Loss', {'train': loss}, step)
-                    writer.add_scalars('Regression_loss', {'train': reg_loss}, step)
-                    writer.add_scalars('Classfication_loss', {'train': cls_loss}, step)
-                    writer.add_scalars('Segmentation_loss', {'train': seg_loss}, step)
+            # log learning_rate
+            current_lr = optimizer.param_groups[0]['lr']
+            writer.add_scalar('learning_rate', current_lr, step)
 
-                    # log learning_rate
-                    current_lr = optimizer.param_groups[0]['lr']
-                    writer.add_scalar('learning_rate', current_lr, step)
+            step += 1
 
-                    step += 1
+            if step % opt.save_interval == 0 and step > 0:
+                save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
+                print('checkpoint...')
 
-                    if step % opt.save_interval == 0 and step > 0:
-                        save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
-                        print('checkpoint...')
+        scheduler.step(np.mean(epoch_loss))
 
-                except Exception as e:
-                    print('[Error]', traceback.format_exc())
-                    print(e)
-                    continue
-
-            scheduler.step(np.mean(epoch_loss))
-
-            if epoch % opt.val_interval == 0:
-                best_fitness, best_loss, best_epoch = val(model, val_generator, params, opt, seg_mode, is_training=True,
-                                                          optimizer=optimizer, scaler=scaler, writer=writer, epoch=epoch, step=step, 
-                                                          best_fitness=best_fitness, best_loss=best_loss, best_epoch=best_epoch)
-    except KeyboardInterrupt:
-        save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
-    finally:
-        writer.close()
+        if epoch % opt.val_interval == 0:
+            best_fitness, best_loss, best_epoch = val(model, val_generator, params, opt, seg_mode, is_training=True,
+                                                        optimizer=optimizer, scaler=scaler, writer=writer, epoch=epoch, step=step, 
+                                                        best_fitness=best_fitness, best_loss=best_loss, best_epoch=best_epoch)
 
 
 if __name__ == '__main__':
