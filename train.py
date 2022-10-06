@@ -65,8 +65,6 @@ def get_args():
                         help='Whether to print results per class when valing')
     parser.add_argument('--plots', type=boolean_string, default=True,
                         help='Whether to plot confusion matrix when valing')
-    parser.add_argument('--num_gpus', type=int, default=1,
-                        help='Number of GPUs to be used (0 to use CPU)')
     parser.add_argument('--conf_thres', type=float, default=0.001,
                         help='Confidence threshold in NMS')
     parser.add_argument('--iou_thres', type=float, default=0.6,
@@ -78,17 +76,7 @@ def get_args():
     return args
 
 def train(opt):
-    torch.backends.cudnn.benchmark = True
-    print("\nCUDNN VERSION: {}\n".format(torch.backends.cudnn.version()))
     params = Params(f'projects/{opt.project}.yml')
-
-    if opt.num_gpus == 0:
-        os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(42)
-    else:
-        torch.manual_seed(42)
 
     opt.saved_path = opt.saved_path + f'/{opt.project}/'
     opt.log_path = opt.log_path + f'/{opt.project}/tensorboard/'
@@ -159,10 +147,6 @@ def train(opt):
             weights_path = opt.load_weights
         else:
             weights_path = get_last_weights(opt.saved_path)
-        # try:
-        #     last_step = int(os.path.basename(weights_path).split('_')[-1].split('.')[0])
-        # except:
-        #     last_step = 0
 
         try:
             ckpt = torch.load(weights_path)
@@ -193,17 +177,12 @@ def train(opt):
         model.bifpndecoder.requires_grad_(False)
         model.segmentation_head.requires_grad_(False)
         print('[Info] freezed segmentation head')
-    #summary(model, (1, 3, 384, 640), device='cpu')
 
     writer = SummaryWriter(opt.log_path + f'/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}/')
 
-    # wrap the model with loss function, to reduce the memory usage on gpu0 and speedup
     model = ModelWithLoss(model, debug=opt.debug)
-
     model = model.to(memory_format=torch.channels_last)
-
-    if opt.num_gpus > 0:
-        model = model.cuda()
+    model = model.cuda()
 
     if opt.optim == 'adamw':
         optimizer = torch.optim.AdamW(model.parameters(), opt.lr)
@@ -211,9 +190,6 @@ def train(opt):
         optimizer = torch.optim.SGD(model.parameters(), opt.lr, momentum=0.9, nesterov=True)
     # print(ckpt)
     scaler = torch.cuda.amp.GradScaler(enabled=opt.amp)
-    # if opt.load_weights is not None and ckpt.get('optimizer', None):
-        # scaler.load_state_dict(ckpt['scaler'])
-        # optimizer.load_state_dict(ckpt['optimizer'])
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
 
@@ -243,11 +219,9 @@ def train(opt):
                     annot = data['annot']
                     seg_annot = data['segmentation']
 
-                    if opt.num_gpus == 1:
-                        # if only one gpu, just send it to cuda:0
-                        imgs = imgs.to(device="cuda", memory_format=torch.channels_last)
-                        annot = annot.cuda()
-                        seg_annot = seg_annot.cuda()
+                    imgs = imgs.to(device="cuda", memory_format=torch.channels_last)
+                    annot = annot.cuda()
+                    seg_annot = seg_annot.cuda()
 
                     optimizer.zero_grad(set_to_none=True)
                     with torch.cuda.amp.autocast(enabled=opt.amp):
