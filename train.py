@@ -55,23 +55,6 @@ def get_args():
                         help='Whether to load weights from a checkpoint, set None to initialize,'
                              'set \'last\' to load last checkpoint')
     parser.add_argument('--saved_path', type=str, default='checkpoints/')
-    parser.add_argument('--debug', type=boolean_string, default=False,
-                        help='Whether visualize the predicted boxes of training, '
-                             'the output images will be in test/, '
-                             'and also only use first 500 images.')
-    parser.add_argument('--cal_map', type=boolean_string, default=True,
-                        help='Calculate mAP in validation')
-    parser.add_argument('-v', '--verbose', type=boolean_string, default=True,
-                        help='Whether to print results per class when valing')
-    parser.add_argument('--plots', type=boolean_string, default=True,
-                        help='Whether to plot confusion matrix when valing')
-    parser.add_argument('--conf_thres', type=float, default=0.001,
-                        help='Confidence threshold in NMS')
-    parser.add_argument('--iou_thres', type=float, default=0.6,
-                        help='IoU threshold in NMS')
-    parser.add_argument('--amp', type=boolean_string, default=False,
-                        help='Automatic Mixed Precision training')
-
     args = parser.parse_args()
     return args
 
@@ -96,7 +79,7 @@ def train(opt):
             )
         ]),
         seg_mode=seg_mode,
-        debug=opt.debug
+        debug=False
     )
 
     training_generator = DataLoaderX(
@@ -119,7 +102,7 @@ def train(opt):
             )
         ]),
         seg_mode=seg_mode,
-        debug=opt.debug
+        debug=False
     )
 
     val_generator = DataLoaderX(
@@ -178,7 +161,7 @@ def train(opt):
 
     writer = SummaryWriter(opt.log_path + f'/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}/')
 
-    model = ModelWithLoss(model, debug=opt.debug)
+    model = ModelWithLoss(model, debug=False)
     model = model.to(memory_format=torch.channels_last)
     model = model.cuda()
 
@@ -186,7 +169,8 @@ def train(opt):
         optimizer = torch.optim.AdamW(model.parameters(), opt.lr)
     else:
         optimizer = torch.optim.SGD(model.parameters(), opt.lr, momentum=0.9, nesterov=True)
-    scaler = torch.cuda.amp.GradScaler(enabled=opt.amp)
+    if opt.load_weights is not None and ckpt.get('optimizer', None):
+        optimizer.load_state_dict(ckpt['optimizer'])
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
 
@@ -212,27 +196,21 @@ def train(opt):
             seg_annot = seg_annot.cuda()
 
             optimizer.zero_grad(set_to_none=True)
-            with torch.cuda.amp.autocast(enabled=opt.amp):
-                cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
-                                                                                                        seg_annot,
-                                                                                                        obj_list=params.obj_list)
-                cls_loss = cls_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
-                reg_loss = reg_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
-                seg_loss = seg_loss.mean() if not opt.freeze_seg else torch.tensor(0, device="cuda")
+            
+            cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
+                                                                                                    seg_annot,
+                                                                                                    obj_list=params.obj_list)
+            cls_loss = cls_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
+            reg_loss = reg_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
+            seg_loss = seg_loss.mean() if not opt.freeze_seg else torch.tensor(0, device="cuda")
 
-                loss = cls_loss + reg_loss + seg_loss
+            loss = cls_loss + reg_loss + seg_loss
                 
             if loss == 0 or not torch.isfinite(loss):
                 continue
-
-            scaler.scale(loss).backward()
-
-            # Don't have to clip grad norm, since our gradients didn't explode anywhere in the training phases
-            # This worsens the metrics
-            # scaler.unscale_(optimizer)
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
-            scaler.step(optimizer)
-            scaler.update()
+                
+            loss.backward()
+            optimizer.step()
 
             epoch_loss.append(float(loss))
 
@@ -259,7 +237,7 @@ def train(opt):
 
         if epoch % opt.val_interval == 0:
             best_fitness, best_loss, best_epoch = val(model, val_generator, params, opt, seg_mode, is_training=True,
-                                                        optimizer=optimizer, scaler=scaler, writer=writer, epoch=epoch, step=step, 
+                                                        optimizer=optimizer, writer=writer, epoch=epoch, step=step, 
                                                         best_fitness=best_fitness, best_loss=best_loss, best_epoch=best_epoch)
 
 

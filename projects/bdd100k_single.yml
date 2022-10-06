@@ -10,14 +10,13 @@ std: [0.229, 0.224, 0.225]
 #anchors_scales: '[5.125, 0.625, 1.625]'
 #anchors_ratios: '[(1, 0.7317073170731707), (1, 0.85), (1, 0.7884615384615384)]'
 
-# anchors_scales: '[2**0, 2**0.70, 2**1.32]'
-# anchors_ratios: '[(0.62, 1.58), (1.0, 1.0), (1.58, 0.62)]'
-anchors_scales: '[1, 1.52, 2.14]'
-anchors_ratios: '[(1.0, 1.0), (0.57, 1.82), (1.82, 0.57)]'
+anchors_scales: '[2**0, 2**0.70, 2**1.32]'
+anchors_ratios: '[(0.62, 1.58), (1.0, 1.0), (1.58, 0.62)]'
 
 # BDD100K officially supports 10 classes
-obj_list: ['person', 'rider', 'car', 'truck', 'bus', 'train', 'motorcycle', 'bicycle', 'traffic light', 'traffic sign']
-obj_combine: []  # if single class, combine these classes into 1 single class in obj_list
+# obj_list: ['person', 'rider', 'car', 'truck', 'bus', 'train', 'motorcycle', 'bicycle', 'traffic light', 'traffic sign']
+obj_list: ['car']
+obj_combine: ['car', 'bus', 'truck', 'train']  # if single class, combine these classes into 1 single class in obj_list
                                                # leave as empty list ([]) to not combine classes
 
 
