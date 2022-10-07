@@ -1,5 +1,3 @@
-tensorboardX
-prefetch_generator
 timm
 webcolors
 pretrainedmodels

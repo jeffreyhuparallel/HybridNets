@@ -5,7 +5,6 @@ from glob import glob
 from typing import Union
 from functools import partial
 from torch.utils.data import DataLoader
-from prefetch_generator import BackgroundGenerator
 import random
 import itertools
 import yaml
@@ -679,12 +678,6 @@ class Anchors(nn.Module):
         # save it for later use to reduce overhead
         self.last_anchors[image.device] = anchor_boxes
         return anchor_boxes
-
-
-class DataLoaderX(DataLoader):
-    """prefetch dataloader"""
-    def __iter__(self):
-        return BackgroundGenerator(super().__iter__())
 
 
 def augment_hsv(img, hgain=0.5, sgain=0.5, vgain=0.5):

@@ -10,11 +10,10 @@ from torchvision import transforms
 from tqdm import tqdm
 
 from hybridnets.backbone import HybridNetsBackbone
-from hybridnets.utils.utils import init_weights, save_checkpoint, DataLoaderX, Params
+from hybridnets.utils.utils import init_weights, save_checkpoint, Params
 from hybridnets.dataset import BddDataset
 from hybridnets.autoanchor import run_anchor
 from hybridnets.model import ModelWithLoss
-from hybridnets.utils.constants import MULTILABEL_MODE, MULTICLASS_MODE, BINARY_MODE
 
 @torch.no_grad()
 def val(params, model, val_generator, writer, step):
@@ -78,12 +77,12 @@ def main(args):
         ])
     )
 
-    training_generator = DataLoaderX(
+    training_generator = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=params.batch_size,
-        shuffle=False,
-        num_workers=params.num_workers,
+        shuffle=True,
         pin_memory=True,
+        num_workers=params.num_workers,
         collate_fn=BddDataset.collate_fn
     )
 
@@ -99,12 +98,12 @@ def main(args):
         ])
     )
 
-    val_generator = DataLoaderX(
+    val_generator = torch.utils.data.DataLoader(
         valid_dataset,
         batch_size=params.batch_size,
         shuffle=False,
-        num_workers=params.num_workers,
         pin_memory=True,
+        num_workers=params.num_workers,
         collate_fn=BddDataset.collate_fn
     )
 
