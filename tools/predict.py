@@ -20,14 +20,15 @@ def main(args):
     params = Params(args.config_file)
     source = "demo/image"
     output = os.path.join(params.output_dir, "demo_result")
+    os.makedirs(output, exist_ok=True)
+    
     img_path = glob(f'{source}/*.jpg') + glob(f'{source}/*.png')
 
     color_list_seg = {}
     for seg_class in params.seg_list:
-        # edit your color here if you wanna fix to your liking
         color_list_seg[seg_class] = list(np.random.choice(range(256), size=3))
     compound_coef = params.compound_coef
-    weight = args.ckpt
+    seg_mode = params.seg_mode
     input_imgs = []
     shapes = []
     det_only_imgs = []
@@ -37,7 +38,6 @@ def main(args):
 
     threshold = 0.25
     iou_threshold = 0.3
-    os.makedirs(output, exist_ok=True)
 
     cudnn.fastest = True
     cudnn.benchmark = True
@@ -74,20 +74,11 @@ def main(args):
 
     x = torch.stack([transform(fi).cuda() for fi in input_imgs], 0)
     x = x.to(torch.float32)
-    weight = torch.load(weight, map_location='cuda')
-    weight_last_layer_seg = weight['segmentation_head.0.weight']
-    if weight_last_layer_seg.size(0) == 1:
-        seg_mode = BINARY_MODE
-    else:
-        if params.seg_multilabel:
-            seg_mode = MULTILABEL_MODE
-        else:
-            seg_mode = MULTICLASS_MODE
-    print("DETECTED SEGMENTATION MODE FROM WEIGHT AND PROJECT FILE:", seg_mode)
+    
     model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list), ratios=eval(anchors_ratios),
                             scales=eval(anchors_scales), seg_classes=len(seg_list), backbone_name=params.backbone_name,
                             seg_mode=seg_mode)
-    model.load_state_dict(weight)
+    model.load_state_dict(torch.load(args.ckpt, map_location='cuda'))
 
     model.requires_grad_(False)
     model.eval()
@@ -96,24 +87,12 @@ def main(args):
     with torch.no_grad():
         features, regression, classification, anchors, seg = model(x)
 
-        # in case of MULTILABEL_MODE, each segmentation class gets their own inference image
         seg_mask_list = []
         # (B, C, W, H) -> (B, W, H)
-        if seg_mode == BINARY_MODE:
-            seg_mask = torch.where(seg >= 0, 1, 0)
-            # print(torch.count_nonzero(seg_mask))
-            seg_mask.squeeze_(1)
-            seg_mask_list.append(seg_mask)
-        elif seg_mode == MULTICLASS_MODE:
-            _, seg_mask = torch.max(seg, 1)
-            seg_mask_list.append(seg_mask)
-        else:
-            seg_mask_list = [torch.where(torch.sigmoid(seg)[:, i, ...] >= 0.5, 1, 0) for i in range(seg.size(1))]
-            # but remove background class from the list
-            seg_mask_list.pop(0)
+        _, seg_mask = torch.max(seg, 1)
+        seg_mask_list.append(seg_mask)
         # (B, W, H) -> (W, H)
         for i in range(seg.size(0)):
-            #   print(i)
             for seg_class_index, seg_mask in enumerate(seg_mask_list):
                 seg_mask_ = seg_mask[i].squeeze().cpu().numpy()
                 pad_h = int(shapes[i][1][1][1])

@@ -16,7 +16,7 @@ from hybridnets.utils.constants import *
 
 
 class BddDataset(Dataset):
-    def __init__(self, params, is_train, inputsize=[640, 384], transform=None, seg_mode=MULTICLASS_MODE, debug=False):
+    def __init__(self, params, is_train, inputsize=[640, 384], transform=None):
         """
         initial all the characteristic
 
@@ -43,8 +43,6 @@ class BddDataset(Dataset):
         self.img_root = img_root / indicator
         self.label_root = label_root / indicator
         self.label_list = list(self.label_root.iterdir())
-        if debug:
-            self.label_list = self.label_list[:50]
         self.seg_root = []
         for root in seg_root:
             self.seg_root.append(Path(root) / indicator)
@@ -66,7 +64,7 @@ class BddDataset(Dataset):
         self.dataset = params.dataset
         self.traffic_light_color = params.traffic_light_color
         self.mosaic_border = [-1 * self.inputsize[1] // 2, -1 * self.inputsize[0] // 2]
-        self.seg_mode = seg_mode
+        self.seg_mode = params.seg_mode
         self.db = self._get_db()
 
     def _get_db(self):

@@ -16,7 +16,7 @@ from hybridnets.utils.constants import MULTILABEL_MODE, MULTICLASS_MODE, BINARY_
 
 
 @torch.no_grad()
-def test(model, val_generator, params, seg_mode):
+def test(model, val_generator, params):
     model.eval()
 
     loss_regression_ls = []
@@ -27,7 +27,7 @@ def test(model, val_generator, params, seg_mode):
     num_thresholds = iou_thresholds.numel()
     names = {i: v for i, v in enumerate(params.obj_list)}
     nc = len(names)
-    ncs = 1 if seg_mode == BINARY_MODE else len(params.seg_list) + 1
+    ncs = 1 if params.seg_mode == BINARY_MODE else len(params.seg_list) + 1
     seen = 0
     s_seg = ' ' * (15 + 11 * 8)
     s = ('%-15s' + '%-11s' * 8) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mAcc')
@@ -92,15 +92,15 @@ def test(model, val_generator, params, seg_mode):
                 correct = torch.zeros(pred.shape[0], num_thresholds, dtype=torch.bool)
             stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), target_class))
     
-        if seg_mode == MULTICLASS_MODE:
+        if params.seg_mode == MULTICLASS_MODE:
             segmentation = segmentation.log_softmax(dim=1).exp()
             _, segmentation = torch.max(segmentation, 1)  # (bs, C, H, W) -> (bs, H, W)
         else:
             segmentation = F.logsigmoid(segmentation).exp()
 
-        tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation, seg_annot, mode=seg_mode,
-                                                                threshold=0.5 if seg_mode != MULTICLASS_MODE else None,
-                                                                num_classes=ncs if seg_mode == MULTICLASS_MODE else None)
+        tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation, seg_annot, mode=params.seg_mode,
+                                                                threshold=0.5 if params.seg_mode != MULTICLASS_MODE else None,
+                                                                num_classes=ncs if params.seg_mode == MULTICLASS_MODE else None)
         iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
         #         print(iou)
         acc = smp_metrics.balanced_accuracy(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
@@ -133,7 +133,7 @@ def test(model, val_generator, params, seg_mode):
 
     miou_ls = []
     for i in range(len(params.seg_list)):
-        if seg_mode == BINARY_MODE:
+        if params.seg_mode == BINARY_MODE:
             # typically this runs once with i == 0
             miou_ls.append(np.mean(iou_ls[i]))
         else:
@@ -161,7 +161,7 @@ def test(model, val_generator, params, seg_mode):
     print(s)
     pf = ('%-15s' + '%-11i' * 2 + '%-11.3g' * 6) % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, acc_score)
     for i in range(len(params.seg_list)):
-        tmp = i+1 if seg_mode != BINARY_MODE else i
+        tmp = i+1 if params.seg_mode != BINARY_MODE else i
         pf += ('%-11.3g' * 3) % (miou_ls[i], iou_ls[tmp], acc_ls[tmp])
     print(pf)
 
@@ -180,7 +180,6 @@ def test(model, val_generator, params, seg_mode):
 def main(args):
     params = Params(args.config_file)
     obj_list = params.obj_list
-    seg_mode = MULTILABEL_MODE if params.seg_multilabel else MULTICLASS_MODE if len(params.seg_list) > 1 else BINARY_MODE
 
     valid_dataset = BddDataset(
         params=params,
@@ -191,8 +190,7 @@ def main(args):
             transforms.Normalize(
                 mean=params.mean, std=params.std
             )
-        ]),
-        seg_mode=seg_mode
+        ])
     )
 
     val_generator = DataLoaderX(
@@ -207,7 +205,7 @@ def main(args):
     model = HybridNetsBackbone(compound_coef=params.compound_coef, num_classes=len(params.obj_list),
                                ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
                                seg_classes=len(params.seg_list), backbone_name=params.backbone_name,
-                               seg_mode=seg_mode)
+                               seg_mode=params.seg_mode)
     
     model.load_state_dict(torch.load(args.ckpt))
     # model.load_state_dict(torch.load(args.ckpt)['model'])
@@ -215,7 +213,7 @@ def main(args):
     model.requires_grad_(False)
     model.cuda()
 
-    test(model, val_generator, params, seg_mode)
+    test(model, val_generator, params)
 
 
 if __name__ == "__main__":

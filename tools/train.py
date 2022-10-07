@@ -66,8 +66,6 @@ def main(args):
 
     writer = SummaryWriter(summary_dir)
 
-    seg_mode = MULTILABEL_MODE if params.seg_multilabel else MULTICLASS_MODE if len(params.seg_list) > 1 else BINARY_MODE
-
     train_dataset = BddDataset(
         params=params,
         is_train=True,
@@ -77,9 +75,7 @@ def main(args):
             transforms.Normalize(
                 mean=params.mean, std=params.std
             )
-        ]),
-        seg_mode=seg_mode,
-        debug=False
+        ])
     )
 
     training_generator = DataLoaderX(
@@ -100,9 +96,7 @@ def main(args):
             transforms.Normalize(
                 mean=params.mean, std=params.std
             )
-        ]),
-        seg_mode=seg_mode,
-        debug=False
+        ])
     )
 
     val_generator = DataLoaderX(
@@ -120,7 +114,7 @@ def main(args):
     model = HybridNetsBackbone(num_classes=len(params.obj_list), compound_coef=params.compound_coef,
                                ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
                                seg_classes=len(params.seg_list), backbone_name=params.backbone_name,
-                               seg_mode=seg_mode)
+                               seg_mode=params.seg_mode)
     if args.ckpt is None:
         print('[Info] initializing weights...')
         init_weights(model)
