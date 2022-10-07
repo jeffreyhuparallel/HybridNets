@@ -6,23 +6,22 @@ import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch import nn
-from torchvision import transforms
 from tqdm import tqdm
 
 from hybridnets.backbone import HybridNetsBackbone
 from hybridnets.utils.utils import init_weights, save_checkpoint, Params
-from hybridnets.dataset import BddDataset
+from hybridnets.data import build_data_loader
 from hybridnets.autoanchor import run_anchor
 from hybridnets.model import ModelWithLoss
 
 @torch.no_grad()
-def val(params, model, val_generator, writer, step):
+def val(params, model, val_dataloader, writer, step):
     model.eval()
 
     loss_regression_ls = []
     loss_classification_ls = []
     loss_segmentation_ls = []
-    for iter, data in enumerate(tqdm(val_generator)):
+    for idx, data in enumerate(tqdm(val_dataloader)):
         imgs = data['img']
         annot = data['annot']
         seg_annot = data['segmentation']
@@ -65,50 +64,11 @@ def main(args):
 
     writer = SummaryWriter(summary_dir)
 
-    train_dataset = BddDataset(
-        params=params,
-        is_train=True,
-        inputsize=params.model['image_size'],
-        transform=transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=params.mean, std=params.std
-            )
-        ])
-    )
-
-    training_generator = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=params.batch_size,
-        shuffle=True,
-        pin_memory=True,
-        num_workers=params.num_workers,
-        collate_fn=BddDataset.collate_fn
-    )
-
-    valid_dataset = BddDataset(
-        params=params,
-        is_train=False,
-        inputsize=params.model['image_size'],
-        transform=transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=params.mean, std=params.std
-            )
-        ])
-    )
-
-    val_generator = torch.utils.data.DataLoader(
-        valid_dataset,
-        batch_size=params.batch_size,
-        shuffle=False,
-        pin_memory=True,
-        num_workers=params.num_workers,
-        collate_fn=BddDataset.collate_fn
-    )
+    train_dataloader = build_data_loader(params, split="train")
+    val_dataloader = build_data_loader(params, split="val")
 
     if params.need_autoanchor:
-        params.anchors_scales, params.anchors_ratios = run_anchor(None, train_dataset)
+        params.anchors_scales, params.anchors_ratios = run_anchor(None, train_dataloader.dataset)
 
     model = HybridNetsBackbone(num_classes=len(params.obj_list), compound_coef=params.compound_coef,
                                ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
@@ -139,10 +99,9 @@ def main(args):
     step = 0
     model.train()
 
-    num_iter_per_epoch = len(training_generator)
     for epoch in range(params.num_epochs):
         epoch_loss = []
-        for iter, data in enumerate(tqdm(training_generator)):
+        for idx, data in enumerate(tqdm(train_dataloader)):
             imgs = data['img']
             annot = data['annot']
             seg_annot = data['segmentation']
@@ -176,7 +135,7 @@ def main(args):
         scheduler.step(np.mean(epoch_loss))
 
         save_checkpoint(model, checkpoint_dir, f'hybridnets-d{params.compound_coef}_{epoch}.pth')
-        val(params, model, val_generator, writer=writer, step=step)
+        val(params, model, val_dataloader, writer=writer, step=step)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
