@@ -41,9 +41,9 @@ def get_args():
     parser.add_argument('--optim', type=str, default='adamw', help='Select optimizer for training, '
                                                                    'suggest using \'adamw\' until the'
                                                                    ' very final stage then switch to \'sgd\'')
-    parser.add_argument('--num_epochs', type=int, default=500)
+    parser.add_argument('--num_epochs', type=int, default=200)
     parser.add_argument('--val_interval', type=int, default=1, help='Number of epoches between valing phases')
-    parser.add_argument('--save_interval', type=int, default=500, help='Number of steps between saving')
+    parser.add_argument('--save_interval', type=int, default=5000, help='Number of steps between saving')
     parser.add_argument('--es_min_delta', type=float, default=0.0,
                         help='Early stopping\'s parameter: minimum change loss to qualify as an improvement')
     parser.add_argument('--es_patience', type=int, default=0,
@@ -53,18 +53,18 @@ def get_args():
     parser.add_argument('-w', '--load_weights', type=str, default=None,
                         help='Whether to load weights from a checkpoint, set None to initialize,'
                              'set \'last\' to load last checkpoint')
-    # parser.add_argument('--log_path', type=str, default='checkpoints/')
-    # parser.add_argument('--saved_path', type=str, default='checkpoints/')
     args = parser.parse_args()
     return args
 
 def train(opt):
     params = Params(f'projects/{opt.project}.yml')
 
-    opt.saved_path = params.output_dir + f'/checkpoints/'
-    opt.log_path = params.output_dir + f'/tensorboard/'
-    os.makedirs(opt.log_path, exist_ok=True)
-    os.makedirs(opt.saved_path, exist_ok=True)
+    checkpoint_dir = params.output_dir + f'/checkpoints/'
+    summary_dir = params.output_dir + f'/tensorboard/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}/'
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    os.makedirs(summary_dir, exist_ok=True)
+
+    writer = SummaryWriter(summary_dir)
 
     seg_mode = MULTILABEL_MODE if params.seg_multilabel else MULTICLASS_MODE if len(params.seg_list) > 1 else BINARY_MODE
 
@@ -128,7 +128,7 @@ def train(opt):
         if opt.load_weights.endswith('.pth'):
             weights_path = opt.load_weights
         else:
-            weights_path = get_last_weights(opt.saved_path)
+            weights_path = get_last_weights(checkpoint_dir)
 
         try:
             ckpt = torch.load(weights_path)
@@ -158,8 +158,6 @@ def train(opt):
         model.bifpndecoder.requires_grad_(False)
         model.segmentation_head.requires_grad_(False)
         print('[Info] freezed segmentation head')
-
-    writer = SummaryWriter(opt.log_path + f'/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}/')
 
     model = ModelWithLoss(model, debug=False)
     model = model.to(memory_format=torch.channels_last)
@@ -203,9 +201,7 @@ def train(opt):
             cls_loss = cls_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
             reg_loss = reg_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
             seg_loss = seg_loss.mean() if not opt.freeze_seg else torch.tensor(0, device="cuda")
-
             loss = cls_loss + reg_loss + seg_loss
-            
             loss.backward()
             optimizer.step()
 
@@ -227,15 +223,13 @@ def train(opt):
             step += 1
 
             if step % opt.save_interval == 0 and step > 0:
-                save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
+                save_checkpoint(model, checkpoint_dir, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
                 print('checkpoint...')
 
         scheduler.step(np.mean(epoch_loss))
 
         if epoch % opt.val_interval == 0:
-            best_fitness, best_loss, best_epoch = val(model, val_generator, params, opt, seg_mode,
-                                                        optimizer=optimizer, writer=writer, epoch=epoch, step=step, 
-                                                        best_fitness=best_fitness, best_loss=best_loss, best_epoch=best_epoch)
+            val(model, val_generator, params, opt, seg_mode, writer=writer, epoch=epoch, step=step)
 
 
 if __name__ == '__main__':
