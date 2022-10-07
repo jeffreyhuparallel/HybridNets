@@ -50,19 +50,19 @@ def get_args():
                         help='Early stopping\'s parameter: number of epochs with no improvement after which '
                              'training will be stopped. Set to 0 to disable this technique')
     parser.add_argument('--data_path', type=str, default='datasets/', help='The root folder of dataset')
-    parser.add_argument('--log_path', type=str, default='checkpoints/')
     parser.add_argument('-w', '--load_weights', type=str, default=None,
                         help='Whether to load weights from a checkpoint, set None to initialize,'
                              'set \'last\' to load last checkpoint')
-    parser.add_argument('--saved_path', type=str, default='checkpoints/')
+    # parser.add_argument('--log_path', type=str, default='checkpoints/')
+    # parser.add_argument('--saved_path', type=str, default='checkpoints/')
     args = parser.parse_args()
     return args
 
 def train(opt):
     params = Params(f'projects/{opt.project}.yml')
 
-    opt.saved_path = opt.saved_path + f'/{opt.project}/'
-    opt.log_path = opt.log_path + f'/{opt.project}/tensorboard/'
+    opt.saved_path = params.output_dir + f'/checkpoints/'
+    opt.log_path = params.output_dir + f'/tensorboard/'
     os.makedirs(opt.log_path, exist_ok=True)
     os.makedirs(opt.saved_path, exist_ok=True)
 
@@ -205,10 +205,7 @@ def train(opt):
             seg_loss = seg_loss.mean() if not opt.freeze_seg else torch.tensor(0, device="cuda")
 
             loss = cls_loss + reg_loss + seg_loss
-                
-            if loss == 0 or not torch.isfinite(loss):
-                continue
-                
+            
             loss.backward()
             optimizer.step()
 
@@ -218,10 +215,10 @@ def train(opt):
                 'Step: {}. Epoch: {}/{}. Iteration: {}/{}. Cls loss: {:.5f}. Reg loss: {:.5f}. Seg loss: {:.5f}. Total loss: {:.5f}'.format(
                     step, epoch, opt.num_epochs, iter + 1, num_iter_per_epoch, cls_loss.item(),
                     reg_loss.item(), seg_loss.item(), loss.item()))
-            writer.add_scalars('Loss', {'train': loss}, step)
-            writer.add_scalars('Regression_loss', {'train': reg_loss}, step)
-            writer.add_scalars('Classfication_loss', {'train': cls_loss}, step)
-            writer.add_scalars('Segmentation_loss', {'train': seg_loss}, step)
+            writer.add_scalar('train/loss', loss, step)
+            writer.add_scalar('train/regression_loss', reg_loss, step)
+            writer.add_scalar('train/classification_loss', cls_loss, step)
+            writer.add_scalar('train/segmentation_loss', seg_loss, step)
 
             # log learning_rate
             current_lr = optimizer.param_groups[0]['lr']
@@ -236,7 +233,7 @@ def train(opt):
         scheduler.step(np.mean(epoch_loss))
 
         if epoch % opt.val_interval == 0:
-            best_fitness, best_loss, best_epoch = val(model, val_generator, params, opt, seg_mode, is_training=True,
+            best_fitness, best_loss, best_epoch = val(model, val_generator, params, opt, seg_mode,
                                                         optimizer=optimizer, writer=writer, epoch=epoch, step=step, 
                                                         best_fitness=best_fitness, best_loss=best_loss, best_epoch=best_epoch)
 

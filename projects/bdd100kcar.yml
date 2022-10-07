@@ -61,3 +61,5 @@ model:
   - 384
 need_autoanchor: false
 pin_memory: true
+
+output_dir: "./output/bdd100kcar"

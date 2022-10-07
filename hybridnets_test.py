@@ -50,7 +50,7 @@ if output.endswith("/"):
     output = output[:-1]
 weight = args.load_weights
 img_path = glob(f'{source}/*.jpg') + glob(f'{source}/*.png')
-img_path = [img_path[0]]  # demo with 1 image
+# img_path = [img_path[0]]  # demo with 1 image
 input_imgs = []
 shapes = []
 det_only_imgs = []

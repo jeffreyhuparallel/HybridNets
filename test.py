@@ -170,11 +170,6 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
     print(
         'Val. Epoch: {}/{}. Classification loss: {:1.5f}. Regression loss: {:1.5f}. Segmentation loss: {:1.5f}. Total loss: {:1.5f}'.format(
             epoch, opt.num_epochs if is_training else 0, cls_loss, reg_loss, seg_loss, loss))
-    if is_training:
-        writer.add_scalars('Loss', {'val': loss}, step)
-        writer.add_scalars('Regression_loss', {'val': reg_loss}, step)
-        writer.add_scalars('Classfication_loss', {'val': cls_loss}, step)
-        writer.add_scalars('Segmentation_loss', {'val': seg_loss}, step)
 
     if opt.cal_map:
         for i in range(ncs):
@@ -240,30 +235,6 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
         results = (mp, mr, map50, map, iou_score, acc_score, loss)
         fi = fitness(
             np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95, iou, acc, loss ]
-
-        # if calculating map, save by best fitness
-        if is_training and fi > best_fitness:
-            best_fitness = fi
-            ckpt = {'epoch': epoch,
-                    'step': step,
-                    'best_fitness': best_fitness,
-                    'model': model.model.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'scaler': scaler.state_dict()}
-            print("Saving checkpoint with best fitness", fi[0])
-            save_checkpoint(ckpt, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}_best.pth')
-    else:
-        # if not calculating map, save by best loss
-        if is_training and loss + opt.es_min_delta < best_loss:
-            best_loss = loss
-            best_epoch = epoch
-
-            save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}_best.pth')
-
-    # Early stopping
-    if is_training and epoch - best_epoch > opt.es_patience > 0:
-        print('[Info] Stop training at epoch {}. The lowest loss achieved is {}'.format(epoch, best_loss))
-        exit(0)
 
     model.train()
     return (best_fitness, best_loss, best_epoch) if is_training else 0

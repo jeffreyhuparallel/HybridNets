@@ -7,3 +7,4 @@ events.out.tfevents.*
 
 datasets/
 demo_result/
+output/

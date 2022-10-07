@@ -17,7 +17,7 @@ from utils.constants import *
 
 
 @torch.no_grad()
-def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
+def val(model, val_generator, params, opt, seg_mode, **kwargs):
     model.eval()
 
     optimizer = kwargs.get('optimizer', None)
@@ -84,24 +84,11 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
 
     print(
         'Val. Epoch: {}/{}. Classification loss: {:1.5f}. Regression loss: {:1.5f}. Segmentation loss: {:1.5f}. Total loss: {:1.5f}'.format(
-            epoch, opt.num_epochs if is_training else 0, cls_loss, reg_loss, seg_loss, loss))
-    if is_training:
-        writer.add_scalars('Loss', {'val': loss}, step)
-        writer.add_scalars('Regression_loss', {'val': reg_loss}, step)
-        writer.add_scalars('Classfication_loss', {'val': cls_loss}, step)
-        writer.add_scalars('Segmentation_loss', {'val': seg_loss}, step)
-
-    # if not calculating map, save by best loss
-    if is_training and loss + opt.es_min_delta < best_loss:
-        best_loss = loss
-        best_epoch = epoch
-
-        save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}_best.pth')
-
-    # Early stopping
-    if is_training and epoch - best_epoch > opt.es_patience > 0:
-        print('[Info] Stop training at epoch {}. The lowest loss achieved is {}'.format(epoch, best_loss))
-        exit(0)
+            epoch, opt.num_epochs, cls_loss, reg_loss, seg_loss, loss))
+    writer.add_scalar('val/loss', loss, step)
+    writer.add_scalar('val/regression_loss', reg_loss, step)
+    writer.add_scalar('val/classification_loss', cls_loss, step)
+    writer.add_scalar('val/segmentation_loss', seg_loss, step)
 
     model.train()
-    return (best_fitness, best_loss, best_epoch) if is_training else 0
+    return (best_fitness, best_loss, best_epoch)
