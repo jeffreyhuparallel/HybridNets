@@ -1,41 +1,64 @@
 import argparse
 import datetime
 import os
-import traceback
 
 import numpy as np
 import torch
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 from torch import nn
 from torchvision import transforms
-from tqdm.autonotebook import tqdm
+from tqdm import tqdm
 
-from val import val
 from backbone import HybridNetsBackbone
-from utils.utils import get_last_weights, init_weights, boolean_string, \
-    save_checkpoint, DataLoaderX, Params
+from utils.utils import init_weights, save_checkpoint, DataLoaderX, Params
 from hybridnets.dataset import BddDataset
 from hybridnets.custom_dataset import CustomDataset
 from hybridnets.autoanchor import run_anchor
 from hybridnets.model import ModelWithLoss
-from utils.constants import *
-from collections import OrderedDict
-from torchinfo import summary
+from utils.constants import MULTILABEL_MODE, MULTICLASS_MODE, BINARY_MODE
 
+@torch.no_grad()
+def val(params, model, val_generator, writer, step):
+    model.eval()
 
-def get_args():
-    parser = argparse.ArgumentParser('HybridNets: End-to-End Perception Network - DatVu')
-    parser.add_argument('-p', '--project', type=str, default='bdd100k', help='Project file that contains parameters')
-    parser.add_argument('-bb', '--backbone', type=str, help='Use timm to create another backbone replacing efficientnet. '
-                                                            'https://github.com/rwightman/pytorch-image-models')
-    parser.add_argument('-w', '--load_weights', type=str, default=None,
-                        help='Whether to load weights from a checkpoint, set None to initialize,'
-                             'set \'last\' to load last checkpoint')
-    args = parser.parse_args()
-    return args
+    loss_regression_ls = []
+    loss_classification_ls = []
+    loss_segmentation_ls = []
+    for iter, data in enumerate(tqdm(val_generator)):
+        imgs = data['img']
+        annot = data['annot']
+        seg_annot = data['segmentation']
 
-def train(opt):
-    params = Params(f'projects/{opt.project}.yml')
+        imgs = imgs.cuda()
+        annot = annot.cuda()
+        seg_annot = seg_annot.cuda()
+
+        cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
+                                                                                                seg_annot,
+                                                                                                obj_list=params.obj_list)
+        cls_loss = cls_loss.mean()
+        reg_loss = reg_loss.mean()
+        seg_loss = seg_loss.mean()
+        loss = cls_loss + reg_loss + seg_loss
+
+        loss_classification_ls.append(cls_loss.item())
+        loss_regression_ls.append(reg_loss.item())
+        loss_segmentation_ls.append(seg_loss.item())
+
+    cls_loss = np.mean(loss_classification_ls)
+    reg_loss = np.mean(loss_regression_ls)
+    seg_loss = np.mean(loss_segmentation_ls)
+    loss = cls_loss + reg_loss + seg_loss
+
+    writer.add_scalar('val/loss', loss, step)
+    writer.add_scalar('val/regression_loss', reg_loss, step)
+    writer.add_scalar('val/classification_loss', cls_loss, step)
+    writer.add_scalar('val/segmentation_loss', seg_loss, step)
+
+    model.train()
+
+def main(args):
+    params = Params(args.config_file)
 
     checkpoint_dir = params.output_dir + f'/checkpoints/'
     summary_dir = params.output_dir + f'/tensorboard/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}/'
@@ -99,26 +122,18 @@ def train(opt):
                                ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
                                seg_classes=len(params.seg_list), backbone_name=params.backbone_name,
                                seg_mode=seg_mode)
-
-    # load last weights
-    ckpt = {}
-    if opt.load_weights:
-        if opt.load_weights.endswith('.pth'):
-            weights_path = opt.load_weights
-        else:
-            weights_path = get_last_weights(checkpoint_dir)
-
+    if args.ckpt is None:
+        print('[Info] initializing weights...')
+        init_weights(model)
+    else:
         try:
-            ckpt = torch.load(weights_path)
-            model.load_state_dict(ckpt.get('model', ckpt), strict=False)
+            state_dict = torch.load(args.ckpt)
+            state_dict = state_dict.get('model', state_dict)
+            model.load_state_dict(state_dict, strict=False)
         except RuntimeError as e:
             print(f'[Warning] Ignoring {e}')
             print(
                 '[Warning] Don\'t panic if you see this, this might be because you load a pretrained weights with different number of classes. The rest of the weights should be loaded already.')
-    else:
-        print('[Info] initializing weights...')
-        init_weights(model)
-
     print('[Info] Successfully!!!')
 
     model = ModelWithLoss(model, debug=False)
@@ -126,24 +141,16 @@ def train(opt):
     model = model.cuda()
 
     optimizer = torch.optim.AdamW(model.parameters(), params.lr)
-    if opt.load_weights is not None and ckpt.get('optimizer', None):
-        optimizer.load_state_dict(ckpt['optimizer'])
-
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
 
     epoch = 0
-    best_loss = 1e5
-    best_epoch = 0
-    last_step = ckpt['step'] if opt.load_weights is not None and ckpt.get('step', None) else 0
-    best_fitness = ckpt['best_fitness'] if opt.load_weights is not None and ckpt.get('best_fitness', None) else 0
-    step = max(0, last_step)
+    step = 0
     model.train()
 
     num_iter_per_epoch = len(training_generator)
     for epoch in range(params.num_epochs):
         epoch_loss = []
-        progress_bar = tqdm(training_generator, ascii=True)
-        for iter, data in enumerate(progress_bar):
+        for iter, data in enumerate(tqdm(training_generator)):
             imgs = data['img']
             annot = data['annot']
             seg_annot = data['segmentation']
@@ -166,27 +173,27 @@ def train(opt):
 
             epoch_loss.append(float(loss))
 
-            progress_bar.set_description(
-                'Step: {}. Epoch: {}/{}. Iteration: {}/{}. Cls loss: {:.5f}. Reg loss: {:.5f}. Seg loss: {:.5f}. Total loss: {:.5f}'.format(
-                    step, epoch, params.num_epochs, iter + 1, num_iter_per_epoch, cls_loss.item(),
-                    reg_loss.item(), seg_loss.item(), loss.item()))
             writer.add_scalar('train/loss', loss, step)
             writer.add_scalar('train/regression_loss', reg_loss, step)
             writer.add_scalar('train/classification_loss', cls_loss, step)
             writer.add_scalar('train/segmentation_loss', seg_loss, step)
-
-            # log learning_rate
-            current_lr = optimizer.param_groups[0]['lr']
-            writer.add_scalar('learning_rate', current_lr, step)
+            writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], step)
 
             step += 1
 
         scheduler.step(np.mean(epoch_loss))
 
-        save_checkpoint(model, checkpoint_dir, f'hybridnets-d{params.compound_coef}_{epoch}_{step}.pth')
-        val(model, val_generator, params, seg_mode, writer=writer, epoch=epoch, step=step)
+        save_checkpoint(model, checkpoint_dir, f'hybridnets-d{params.compound_coef}_{epoch}.pth')
+        val(params, model, val_generator, writer=writer, step=step)
 
-
-if __name__ == '__main__':
-    opt = get_args()
-    train(opt)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-c", "--config-file", required=True, help="Path to config file"
+    )
+    parser.add_argument(
+        "-p", "--ckpt", default=None, type=str, help="Path to checkpoint"
+    )
+    args = parser.parse_args()
+    print(args)
+    main(args)

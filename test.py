@@ -17,7 +17,7 @@ from utils.constants import *
 
 
 @torch.no_grad()
-def val(model, val_generator, params, seg_mode):
+def test(model, val_generator, params, seg_mode):
     model.eval()
 
     loss_regression_ls = []
@@ -146,10 +146,7 @@ def val(model, val_generator, params, seg_mode):
 
     # Compute statistics
     stats = [np.concatenate(x, 0) for x in zip(*stats)]
-
     ap50 = None
-    save_dir = 'plots'
-    os.makedirs(save_dir, exist_ok=True)
 
     # Compute metrics
     if len(stats) and stats[0].any():
@@ -170,7 +167,7 @@ def val(model, val_generator, params, seg_mode):
     print(pf)
 
     # Print results per class
-    if params.verbose and nc > 1 and len(stats):
+    if nc > 1 and len(stats):
         pf = '%-15s' + '%-11i' * 2 + '%-11.3g' * 4
         for i, c in enumerate(ap_class):
             print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
@@ -219,7 +216,7 @@ def main(args):
     model.requires_grad_(False)
     model.cuda()
 
-    val(model, val_generator, params, seg_mode)
+    test(model, val_generator, params, seg_mode)
 
 
 if __name__ == "__main__":
