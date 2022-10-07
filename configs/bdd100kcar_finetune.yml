@@ -62,4 +62,11 @@ model:
 need_autoanchor: false
 pin_memory: true
 
-output_dir: "./output/bdd100kcar"
+output_dir: "./output/bdd100kcar_finetune"
+backbone_name: "efficientnet"
+compound_coef: 3
+
+batch_size: 8
+num_workers: 8
+num_epochs: 200
+lr: 0.0001
