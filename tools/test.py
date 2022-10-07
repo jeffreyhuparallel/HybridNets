@@ -3,17 +3,16 @@ import numpy as np
 import argparse
 from tqdm import tqdm
 import os
-
-from utils import smp_metrics
-from utils.utils import ConfusionMatrix, postprocess, scale_coords, process_batch, ap_per_class, fitness, \
-    save_checkpoint, DataLoaderX, BBoxTransform, ClipBoxes, boolean_string, Params
-from backbone import HybridNetsBackbone
-from hybridnets.dataset import BddDataset
-from hybridnets.custom_dataset import CustomDataset
 from torchvision import transforms
 import torch.nn.functional as F
+
+from hybridnets.utils import smp_metrics
+from hybridnets.utils.utils import ConfusionMatrix, postprocess, scale_coords, process_batch, ap_per_class, fitness, \
+    save_checkpoint, DataLoaderX, BBoxTransform, ClipBoxes, boolean_string, Params
+from hybridnets.backbone import HybridNetsBackbone
+from hybridnets.dataset import BddDataset
 from hybridnets.model import ModelWithLoss
-from utils.constants import *
+from hybridnets.utils.constants import MULTILABEL_MODE, MULTICLASS_MODE, BINARY_MODE
 
 
 @torch.no_grad()
@@ -150,7 +149,7 @@ def test(model, val_generator, params, seg_mode):
 
     # Compute metrics
     if len(stats) and stats[0].any():
-        p, r, f1, ap, ap_class = ap_per_class(*stats, plot=False, save_dir=save_dir, names=names)
+        p, r, f1, ap, ap_class = ap_per_class(*stats, plot=False, save_dir=params.output_dir, names=names)
         ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
         mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
         nt = np.bincount(stats[3].astype(np.int64), minlength=1)  # number of targets per class

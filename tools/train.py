@@ -9,13 +9,12 @@ from torch import nn
 from torchvision import transforms
 from tqdm import tqdm
 
-from backbone import HybridNetsBackbone
-from utils.utils import init_weights, save_checkpoint, DataLoaderX, Params
+from hybridnets.backbone import HybridNetsBackbone
+from hybridnets.utils.utils import init_weights, save_checkpoint, DataLoaderX, Params
 from hybridnets.dataset import BddDataset
-from hybridnets.custom_dataset import CustomDataset
 from hybridnets.autoanchor import run_anchor
 from hybridnets.model import ModelWithLoss
-from utils.constants import MULTILABEL_MODE, MULTICLASS_MODE, BINARY_MODE
+from hybridnets.utils.constants import MULTILABEL_MODE, MULTICLASS_MODE, BINARY_MODE
 
 @torch.no_grad()
 def val(params, model, val_generator, writer, step):

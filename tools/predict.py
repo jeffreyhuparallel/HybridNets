@@ -1,20 +1,20 @@
 import time
 import torch
 from torch.backends import cudnn
-from backbone import HybridNetsBackbone
 import cv2
 import numpy as np
 from glob import glob
-from utils.utils import letterbox, scale_coords, postprocess, BBoxTransform, ClipBoxes, restricted_float, \
-    boolean_string, Params
-from utils.plot import STANDARD_COLORS, standard_to_bgr, get_index_label, plot_one_box
 import os
 from torchvision import transforms
 import argparse
-from utils.constants import *
 from collections import OrderedDict
 from torch.nn import functional as F
 
+from hybridnets.backbone import HybridNetsBackbone
+from hybridnets.utils.constants import MULTILABEL_MODE, MULTICLASS_MODE, BINARY_MODE
+from hybridnets.utils.plot import STANDARD_COLORS, standard_to_bgr, get_index_label, plot_one_box
+from hybridnets.utils.utils import letterbox, scale_coords, postprocess, BBoxTransform, ClipBoxes, restricted_float, \
+    boolean_string, Params
 
 def main(args):
     params = Params(args.config_file)

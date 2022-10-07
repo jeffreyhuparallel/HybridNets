@@ -2,12 +2,11 @@ import torch
 from torch import nn
 import timm
 
+from hybridnets.encoders import get_encoder
 from hybridnets.model import BiFPN, Regressor, Classifier, BiFPNDecoder
-from utils.utils import Anchors
 from hybridnets.model import SegmentationHead
-
-from encoders import get_encoder
-from utils.constants import *
+from hybridnets.utils.utils import Anchors
+from hybridnets.utils.constants import *
 
 class HybridNetsBackbone(nn.Module):
     def __init__(self, num_classes=80, compound_coef=0, seg_classes=1, backbone_name=None, seg_mode=MULTICLASS_MODE, onnx_export=False, **kwargs):

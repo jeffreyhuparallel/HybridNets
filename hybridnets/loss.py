@@ -4,11 +4,12 @@ import cv2
 import numpy as np
 from torch.nn.modules.loss import _Loss
 import torch.nn.functional as F
-from utils.utils import postprocess, BBoxTransform, ClipBoxes
 from typing import Optional, List
 from functools import partial
-from utils.plot import display
-from utils.constants import *
+
+from hybridnets.utils.utils import postprocess, BBoxTransform, ClipBoxes
+from hybridnets.utils.plot import display
+from hybridnets.utils.constants import *
 
 def calc_iou(a, b):
     # a(anchor) [boxes, (y1, x1, y2, x2)]
