@@ -76,9 +76,7 @@ class HybridNetsBackbone(nn.Module):
                                      pyramid_levels=self.pyramid_levels[self.compound_coef],
                                      onnx_export=onnx_export)
 
-        if backbone_name:
-            self.encoder = timm.create_model(backbone_name, pretrained=True, features_only=True, out_indices=(2,3,4))  # P3,P4,P5
-        else:
+        if backbone_name == "efficientnet":
             # EfficientNet_Pytorch
             self.encoder = get_encoder(
                 'efficientnet-b' + str(self.backbone_compound_coef[compound_coef]),
@@ -86,6 +84,8 @@ class HybridNetsBackbone(nn.Module):
                 depth=5,
                 weights='imagenet',
             )
+        else:
+            self.encoder = timm.create_model(backbone_name, pretrained=True, features_only=True, out_indices=(2,3,4))  # P3,P4,P5
 
         if not onnx_export:
             self.anchors = Anchors(anchor_scale=self.anchor_scale[compound_coef],

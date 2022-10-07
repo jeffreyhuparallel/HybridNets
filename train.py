@@ -28,25 +28,6 @@ def get_args():
     parser.add_argument('-p', '--project', type=str, default='bdd100k', help='Project file that contains parameters')
     parser.add_argument('-bb', '--backbone', type=str, help='Use timm to create another backbone replacing efficientnet. '
                                                             'https://github.com/rwightman/pytorch-image-models')
-    parser.add_argument('-c', '--compound_coef', type=int, default=3, help='Coefficient of efficientnet backbone')
-    parser.add_argument('-n', '--num_workers', type=int, default=8, help='Num_workers of dataloader')
-    parser.add_argument('-b', '--batch_size', type=int, default=12, help='Number of images per batch among all devices')
-    parser.add_argument('--freeze_backbone', type=boolean_string, default=False,
-                        help='Freeze encoder and neck (effnet and bifpn)')
-    parser.add_argument('--freeze_det', type=boolean_string, default=False,
-                        help='Freeze detection head')
-    parser.add_argument('--freeze_seg', type=boolean_string, default=False,
-                        help='Freeze segmentation head')
-    parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--num_epochs', type=int, default=200)
-    parser.add_argument('--val_interval', type=int, default=1, help='Number of epoches between valing phases')
-    parser.add_argument('--save_interval', type=int, default=5000, help='Number of steps between saving')
-    parser.add_argument('--es_min_delta', type=float, default=0.0,
-                        help='Early stopping\'s parameter: minimum change loss to qualify as an improvement')
-    parser.add_argument('--es_patience', type=int, default=0,
-                        help='Early stopping\'s parameter: number of epochs with no improvement after which '
-                             'training will be stopped. Set to 0 to disable this technique')
-    parser.add_argument('--data_path', type=str, default='datasets/', help='The root folder of dataset')
     parser.add_argument('-w', '--load_weights', type=str, default=None,
                         help='Whether to load weights from a checkpoint, set None to initialize,'
                              'set \'last\' to load last checkpoint')
@@ -81,10 +62,10 @@ def train(opt):
 
     training_generator = DataLoaderX(
         train_dataset,
-        batch_size=opt.batch_size,
+        batch_size=params.batch_size,
         shuffle=False,
-        num_workers=opt.num_workers,
-        pin_memory=params.pin_memory,
+        num_workers=params.num_workers,
+        pin_memory=True,
         collate_fn=BddDataset.collate_fn
     )
 
@@ -104,19 +85,19 @@ def train(opt):
 
     val_generator = DataLoaderX(
         valid_dataset,
-        batch_size=opt.batch_size,
+        batch_size=params.batch_size,
         shuffle=False,
-        num_workers=opt.num_workers,
-        pin_memory=params.pin_memory,
+        num_workers=params.num_workers,
+        pin_memory=True,
         collate_fn=BddDataset.collate_fn
     )
 
     if params.need_autoanchor:
         params.anchors_scales, params.anchors_ratios = run_anchor(None, train_dataset)
 
-    model = HybridNetsBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
+    model = HybridNetsBackbone(num_classes=len(params.obj_list), compound_coef=params.compound_coef,
                                ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
-                               seg_classes=len(params.seg_list), backbone_name=opt.backbone,
+                               seg_classes=len(params.seg_list), backbone_name=params.backbone_name,
                                seg_mode=seg_mode)
 
     # load last weights
@@ -140,27 +121,11 @@ def train(opt):
 
     print('[Info] Successfully!!!')
 
-    if opt.freeze_backbone:
-        model.encoder.requires_grad_(False)
-        model.bifpn.requires_grad_(False)
-        print('[Info] freezed backbone')
-
-    if opt.freeze_det:
-        model.regressor.requires_grad_(False)
-        model.classifier.requires_grad_(False)
-        model.anchors.requires_grad_(False)
-        print('[Info] freezed detection head')
-
-    if opt.freeze_seg:
-        model.bifpndecoder.requires_grad_(False)
-        model.segmentation_head.requires_grad_(False)
-        print('[Info] freezed segmentation head')
-
     model = ModelWithLoss(model, debug=False)
     model = model.to(memory_format=torch.channels_last)
     model = model.cuda()
 
-    optimizer = torch.optim.AdamW(model.parameters(), opt.lr)
+    optimizer = torch.optim.AdamW(model.parameters(), params.lr)
     if opt.load_weights is not None and ckpt.get('optimizer', None):
         optimizer.load_state_dict(ckpt['optimizer'])
 
@@ -175,7 +140,7 @@ def train(opt):
     model.train()
 
     num_iter_per_epoch = len(training_generator)
-    for epoch in range(opt.num_epochs):
+    for epoch in range(params.num_epochs):
         epoch_loss = []
         progress_bar = tqdm(training_generator, ascii=True)
         for iter, data in enumerate(progress_bar):
@@ -192,9 +157,9 @@ def train(opt):
             cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
                                                                                                     seg_annot,
                                                                                                     obj_list=params.obj_list)
-            cls_loss = cls_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
-            reg_loss = reg_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
-            seg_loss = seg_loss.mean() if not opt.freeze_seg else torch.tensor(0, device="cuda")
+            cls_loss = cls_loss.mean()
+            reg_loss = reg_loss.mean()
+            seg_loss = seg_loss.mean()
             loss = cls_loss + reg_loss + seg_loss
             loss.backward()
             optimizer.step()
@@ -203,7 +168,7 @@ def train(opt):
 
             progress_bar.set_description(
                 'Step: {}. Epoch: {}/{}. Iteration: {}/{}. Cls loss: {:.5f}. Reg loss: {:.5f}. Seg loss: {:.5f}. Total loss: {:.5f}'.format(
-                    step, epoch, opt.num_epochs, iter + 1, num_iter_per_epoch, cls_loss.item(),
+                    step, epoch, params.num_epochs, iter + 1, num_iter_per_epoch, cls_loss.item(),
                     reg_loss.item(), seg_loss.item(), loss.item()))
             writer.add_scalar('train/loss', loss, step)
             writer.add_scalar('train/regression_loss', reg_loss, step)
@@ -216,14 +181,10 @@ def train(opt):
 
             step += 1
 
-            if step % opt.save_interval == 0 and step > 0:
-                save_checkpoint(model, checkpoint_dir, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
-                print('checkpoint...')
-
         scheduler.step(np.mean(epoch_loss))
 
-        if epoch % opt.val_interval == 0:
-            val(model, val_generator, params, opt, seg_mode, writer=writer, epoch=epoch, step=step)
+        save_checkpoint(model, checkpoint_dir, f'hybridnets-d{params.compound_coef}_{epoch}_{step}.pth')
+        val(model, val_generator, params, seg_mode, writer=writer, epoch=epoch, step=step)
 
 
 if __name__ == '__main__':

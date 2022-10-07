@@ -17,7 +17,7 @@ from utils.constants import *
 
 
 @torch.no_grad()
-def val(model, val_generator, params, opt, seg_mode, **kwargs):
+def val(model, val_generator, params, seg_mode, **kwargs):
     model.eval()
 
     writer = kwargs.get('writer', None)
@@ -55,7 +55,7 @@ def val(model, val_generator, params, opt, seg_mode, **kwargs):
 
     print(
         'Val. Epoch: {}/{}. Classification loss: {:1.5f}. Regression loss: {:1.5f}. Segmentation loss: {:1.5f}. Total loss: {:1.5f}'.format(
-            epoch, opt.num_epochs, cls_loss, reg_loss, seg_loss, loss))
+            epoch, params.num_epochs, cls_loss, reg_loss, seg_loss, loss))
     writer.add_scalar('val/loss', loss, step)
     writer.add_scalar('val/regression_loss', reg_loss, step)
     writer.add_scalar('val/classification_loss', cls_loss, step)
