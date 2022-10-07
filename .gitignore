@@ -5,6 +5,6 @@
 *.pth
 events.out.tfevents.*
 
-datasets/
-demo_result/
-output/
+datasets*
+output*
+tmp*
