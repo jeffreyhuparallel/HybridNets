@@ -38,6 +38,9 @@ class HybridNetsBackbone(nn.Module):
             7: [72, 200, 576],
             8: [80, 224, 640],
         }
+        if backbone_name == "regnet":
+            conv_channel_coef = {3: [56, 152, 368]} # regnetx_002
+            # conv_channel_coef = {3: [64, 160, 384]} # regnetx_004
 
         self.onnx_export = onnx_export
         num_anchors = len(self.aspect_ratios) * self.num_scales
@@ -84,7 +87,7 @@ class HybridNetsBackbone(nn.Module):
                 weights='imagenet',
             )
         else:
-            self.encoder = timm.create_model(backbone_name, pretrained=True, features_only=True, out_indices=(2,3,4))  # P3,P4,P5
+            self.encoder = timm.create_model(backbone_name, pretrained=True, features_only=True, out_indices=(1,2,3,4))  # P3,P4,P5
 
         if not onnx_export:
             self.anchors = Anchors(anchor_scale=self.anchor_scale[compound_coef],
