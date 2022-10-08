@@ -62,7 +62,7 @@ model:
   - 384
 need_autoanchor: false
 
-backbone_name: "regnetx_002"
+backbone_name: "regnetx_004"
 compound_coef: 3
 batch_size: 8
 num_workers: 8

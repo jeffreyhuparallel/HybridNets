@@ -38,9 +38,8 @@ class HybridNetsBackbone(nn.Module):
             7: [72, 200, 576],
             8: [80, 224, 640],
         }
-        if backbone_name == "regnet":
-            conv_channel_coef = {3: [56, 152, 368]} # regnetx_002
-            # conv_channel_coef = {3: [64, 160, 384]} # regnetx_004
+        if "regnet" in backbone_name:
+            conv_channel_coef = {3: [64, 160, 384]} # regnetx_004
 
         self.onnx_export = onnx_export
         num_anchors = len(self.aspect_ratios) * self.num_scales
