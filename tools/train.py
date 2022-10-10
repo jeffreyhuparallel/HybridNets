@@ -74,9 +74,7 @@ def main(args):
 
     model = HybridNetsBackbone(params)
     if args.ckpt is not None:
-        state_dict = torch.load(args.ckpt)
-        state_dict = state_dict.get('model', state_dict)
-        model.load_state_dict(state_dict, strict=False)
+        model.load_state_dict(torch.load(args.ckpt))
 
     model = ModelWithLoss(model, debug=False)
     model = model.to(memory_format=torch.channels_last)
@@ -86,7 +84,6 @@ def main(args):
 
     model.train()
     for epoch in range(params.num_epochs):
-        epoch_loss = []
         for idx, data in enumerate(tqdm(train_dataloader)):
             imgs = data['img']
             annot = data['annot']
@@ -108,8 +105,6 @@ def main(args):
             loss.backward()
             optimizer.step()
 
-            epoch_loss.append(float(loss))
-
             writer.add_scalar('train/loss', loss, step)
             writer.add_scalar('train/regression_loss', reg_loss, step)
             writer.add_scalar('train/classification_loss', cls_loss, step)
@@ -118,7 +113,8 @@ def main(args):
 
             step += 1
 
-        save_checkpoint(model, checkpoint_dir, f'hybridnets-d{params.compound_coef}_{epoch}.pth')
+        torch.save(model.model.state_dict(), os.path.join(checkpoint_dir, f'hybridnets-d{params.compound_coef}_{epoch}.pth'))
+
         val(params, model, val_dataloader, writer=writer, step=step)
 
 if __name__ == "__main__":
