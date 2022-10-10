@@ -5,17 +5,23 @@ import timm
 from hybridnets.encoders import get_encoder
 from hybridnets.model import BiFPN, Regressor, Classifier, BiFPNDecoder
 from hybridnets.model import SegmentationHead
-from hybridnets.utils.utils import Anchors
+from hybridnets.utils.utils import Anchors, init_weights
 from hybridnets.utils.constants import *
 
 class HybridNetsBackbone(nn.Module):
-    def __init__(self, num_classes=80, compound_coef=0, seg_classes=1, backbone_name=None, seg_mode=MULTICLASS_MODE, onnx_export=False, **kwargs):
+    def __init__(self, params, onnx_export=False):
         super(HybridNetsBackbone, self).__init__()
-        self.compound_coef = compound_coef
+        self.compound_coef = params.compound_coef
+        self.num_classes = len(params.obj_list)
+        self.seg_classes = len(params.seg_list)
+        self.seg_mode = params.seg_mode
+        self.backbone_name = params.backbone_name
+        self.anchors_scales = eval(params.anchors_scales)
+        self.anchors_ratios = eval(params.anchors_ratios)
+        self.num_scales = len(self.anchors_scales)
+        self.onnx_export = onnx_export
 
-        self.seg_classes = seg_classes
-        self.seg_mode = seg_mode
-
+        self.num_anchors = len(self.anchors_ratios) * self.num_scales
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6, 7]
         self.fpn_num_filters = [64, 88, 112, 160, 224, 288, 384, 384, 384]
         self.fpn_cell_repeats = [3, 4, 5, 6, 7, 7, 8, 8, 8]
@@ -23,9 +29,6 @@ class HybridNetsBackbone(nn.Module):
         self.box_class_repeats = [3, 3, 3, 4, 4, 4, 5, 5, 5]
         self.pyramid_levels = [5, 5, 5, 5, 5, 5, 5, 5, 6]
         self.anchor_scale = [1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,]
-        # self.anchor_scale = [2.,2.,2.,2.,2.,2.,2.,2.,2.,]
-        self.aspect_ratios = kwargs.get('ratios', [(1.0, 1.0), (1.4, 0.7), (0.7, 1.4)])
-        self.num_scales = len(kwargs.get('scales', [2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)]))
         conv_channel_coef = {
             # the channels of P3/P4/P5.
             0: [40, 112, 320],
@@ -38,26 +41,22 @@ class HybridNetsBackbone(nn.Module):
             7: [72, 200, 576],
             8: [80, 224, 640],
         }
-        if "regnet" in backbone_name:
+        if "regnet" in self.backbone_name:
             conv_channel_coef = {3: [64, 160, 384]} # regnetx_004
-
-        self.onnx_export = onnx_export
-        num_anchors = len(self.aspect_ratios) * self.num_scales
 
         self.bifpn = nn.Sequential(
             *[BiFPN(self.fpn_num_filters[self.compound_coef],
-                    conv_channel_coef[compound_coef],
+                    conv_channel_coef[self.compound_coef],
                     True if _ == 0 else False,
-                    attention=True if compound_coef < 6 else False,
-                    use_p8=compound_coef > 7,
-                    onnx_export=onnx_export)
-              for _ in range(self.fpn_cell_repeats[compound_coef])])
+                    attention=True if self.compound_coef < 6 else False,
+                    use_p8=self.compound_coef > 7,
+                    onnx_export=self.onnx_export)
+              for _ in range(self.fpn_cell_repeats[self.compound_coef])])
 
-        self.num_classes = num_classes
-        self.regressor = Regressor(in_channels=self.fpn_num_filters[self.compound_coef], num_anchors=num_anchors,
+        self.regressor = Regressor(in_channels=self.fpn_num_filters[self.compound_coef], num_anchors=self.num_anchors,
                                    num_layers=self.box_class_repeats[self.compound_coef],
                                    pyramid_levels=self.pyramid_levels[self.compound_coef],
-                                   onnx_export=onnx_export)
+                                   onnx_export=self.onnx_export)
 
         '''Modified by Dat Vu'''
         # self.decoder = DecoderModule()
@@ -71,28 +70,27 @@ class HybridNetsBackbone(nn.Module):
             upsampling=4,
         )
 
-        self.classifier = Classifier(in_channels=self.fpn_num_filters[self.compound_coef], num_anchors=num_anchors,
-                                     num_classes=num_classes,
+        self.classifier = Classifier(in_channels=self.fpn_num_filters[self.compound_coef], num_anchors=self.num_anchors,
+                                     num_classes=self.num_classes,
                                      num_layers=self.box_class_repeats[self.compound_coef],
                                      pyramid_levels=self.pyramid_levels[self.compound_coef],
-                                     onnx_export=onnx_export)
+                                     onnx_export=self.onnx_export)
 
-        if backbone_name == "efficientnet":
+        if self.backbone_name == "efficientnet":
             # EfficientNet_Pytorch
             self.encoder = get_encoder(
-                'efficientnet-b' + str(self.backbone_compound_coef[compound_coef]),
+                'efficientnet-b' + str(self.backbone_compound_coef[self.compound_coef]),
                 in_channels=3,
                 depth=5,
                 weights='imagenet',
             )
         else:
-            self.encoder = timm.create_model(backbone_name, pretrained=True, features_only=True, out_indices=(1,2,3,4))  # P3,P4,P5
+            self.encoder = timm.create_model(self.backbone_name, pretrained=True, features_only=True, out_indices=(1,2,3,4))  # P2,P3,P4,P5
 
-        if not onnx_export:
-            self.anchors = Anchors(anchor_scale=self.anchor_scale[compound_coef],
+        if not self.onnx_export:
+            self.anchors = Anchors(self.anchors_scales, self.anchors_ratios, anchor_scale=self.anchor_scale[self.compound_coef],
                                    pyramid_levels=(torch.arange(self.pyramid_levels[self.compound_coef]) + 3).tolist(),
-                                   onnx_export=onnx_export,
-                                   **kwargs)
+                                   onnx_export=self.onnx_export)
         else:
             ## TODO: timm
             self.encoder.set_swish(memory_efficient=False)
@@ -100,6 +98,7 @@ class HybridNetsBackbone(nn.Module):
         self.initialize_decoder(self.bifpndecoder)
         self.initialize_head(self.segmentation_head)
         self.initialize_decoder(self.bifpn)
+        self.initialize_weights()
 
     def freeze_bn(self):
         for m in self.modules():
@@ -128,6 +127,7 @@ class HybridNetsBackbone(nn.Module):
             return features, regression, classification, anchors, segmentation
         else:
             return regression, classification, segmentation
+
     def initialize_decoder(self, module):
         for m in module.modules():
 
@@ -152,3 +152,6 @@ class HybridNetsBackbone(nn.Module):
                 nn.init.xavier_uniform_(m.weight)
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
+    
+    def initialize_weights(self):
+        init_weights(self)

@@ -593,7 +593,7 @@ class ClipBoxes(nn.Module):
 
 class Anchors(nn.Module):
 
-    def __init__(self, anchor_scale=4., pyramid_levels=None, onnx_export=False, **kwargs):
+    def __init__(self, scales, ratios, anchor_scale=4., pyramid_levels=None, onnx_export=False):
         super().__init__()
         self.anchor_scale = anchor_scale
 
@@ -602,9 +602,9 @@ class Anchors(nn.Module):
         else:
             self.pyramid_levels = pyramid_levels
 
-        self.strides = kwargs.get('strides', [2 ** x for x in self.pyramid_levels])
-        self.scales = np.array(kwargs.get('scales', [2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)]))
-        self.ratios = kwargs.get('ratios', [(1.0, 1.0), (1.4, 0.7), (0.7, 1.4)])
+        self.strides = [2 ** x for x in self.pyramid_levels]
+        self.scales = np.array(scales)
+        self.ratios = ratios
 
         self.last_anchors = {}
         self.last_shape = None

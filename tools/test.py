@@ -170,10 +170,11 @@ def main(args):
     params = Params(args.config_file)
     obj_list = params.obj_list
 
-    model = HybridNetsBackbone(compound_coef=params.compound_coef, num_classes=len(params.obj_list),
-                               ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
-                               seg_classes=len(params.seg_list), backbone_name=params.backbone_name,
-                               seg_mode=params.seg_mode)
+    # model = HybridNetsBackbone(compound_coef=params.compound_coef, num_classes=len(params.obj_list),
+    #                            ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
+    #                            seg_classes=len(params.seg_list), backbone_name=params.backbone_name,
+    #                            seg_mode=params.seg_mode)
+    model = HybridNetsBackbone(params)
     
     model.load_state_dict(torch.load(args.ckpt))
     # model.load_state_dict(torch.load(args.ckpt)['model'])

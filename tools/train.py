@@ -9,7 +9,7 @@ from torch import nn
 from tqdm import tqdm
 
 from hybridnets.backbone import HybridNetsBackbone
-from hybridnets.utils.utils import init_weights, save_checkpoint, Params
+from hybridnets.utils.utils import save_checkpoint, Params
 from hybridnets.data import build_data_loader
 from hybridnets.autoanchor import run_anchor
 from hybridnets.model import ModelWithLoss
@@ -56,6 +56,8 @@ def val(params, model, val_dataloader, writer, step):
 
 def main(args):
     params = Params(args.config_file)
+    epoch = 0
+    step = 0
 
     checkpoint_dir = params.output_dir + f'/checkpoints/'
     summary_dir = params.output_dir + f'/tensorboard/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}/'
@@ -70,35 +72,19 @@ def main(args):
     if params.need_autoanchor:
         params.anchors_scales, params.anchors_ratios = run_anchor(None, train_dataloader.dataset)
 
-    model = HybridNetsBackbone(num_classes=len(params.obj_list), compound_coef=params.compound_coef,
-                               ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
-                               seg_classes=len(params.seg_list), backbone_name=params.backbone_name,
-                               seg_mode=params.seg_mode)
-    if args.ckpt is None:
-        print('[Info] initializing weights...')
-        init_weights(model)
-    else:
-        try:
-            state_dict = torch.load(args.ckpt)
-            state_dict = state_dict.get('model', state_dict)
-            model.load_state_dict(state_dict, strict=False)
-        except RuntimeError as e:
-            print(f'[Warning] Ignoring {e}')
-            print(
-                '[Warning] Don\'t panic if you see this, this might be because you load a pretrained weights with different number of classes. The rest of the weights should be loaded already.')
-    print('[Info] Successfully!!!')
+    model = HybridNetsBackbone(params)
+    if args.ckpt is not None:
+        state_dict = torch.load(args.ckpt)
+        state_dict = state_dict.get('model', state_dict)
+        model.load_state_dict(state_dict, strict=False)
 
     model = ModelWithLoss(model, debug=False)
     model = model.to(memory_format=torch.channels_last)
     model = model.cuda()
 
     optimizer = torch.optim.AdamW(model.parameters(), params.lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
 
-    epoch = 0
-    step = 0
     model.train()
-
     for epoch in range(params.num_epochs):
         epoch_loss = []
         for idx, data in enumerate(tqdm(train_dataloader)):
@@ -131,8 +117,6 @@ def main(args):
             writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], step)
 
             step += 1
-
-        scheduler.step(np.mean(epoch_loss))
 
         save_checkpoint(model, checkpoint_dir, f'hybridnets-d{params.compound_coef}_{epoch}.pth')
         val(params, model, val_dataloader, writer=writer, step=step)
