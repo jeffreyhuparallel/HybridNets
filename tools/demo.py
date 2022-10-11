@@ -1,7 +1,10 @@
+from typing import Union, List, Optional, Tuple
 import time
 import torch
+import torchvision
 from torch.backends import cudnn
 import cv2
+from PIL import Image
 import numpy as np
 from glob import glob
 import os
@@ -15,6 +18,81 @@ from hybridnets.utils.constants import MULTILABEL_MODE, MULTICLASS_MODE, BINARY_
 from hybridnets.utils.plot import STANDARD_COLORS, standard_to_bgr, get_index_label, plot_one_box
 from hybridnets.utils.utils import letterbox, scale_coords, postprocess, BBoxTransform, ClipBoxes, restricted_float, \
     boolean_string, Params
+
+from railyard.util.visualization import apply_color, overlay_images_batch, overlay_images
+
+def normalize_tensor(
+    tensor: Union[torch.Tensor, List[torch.Tensor]],
+    value_range: Optional[Tuple[int, int]] = None,
+    scale_each: bool = True,
+) -> torch.Tensor:
+    """
+    Normalize a tensor of images by shifting images to the range (0, 1), 
+    by the min and max values specified by ``value_range``.
+    Args:
+        tensor (Tensor or list): 4D mini-batch Tensor of shape (B x C x H x W)
+            or a list of images all of the same size.
+        value_range (tuple, optional): tuple (min, max) where min and max are numbers,
+            then these numbers are used to normalize the image. By default, min and max
+            are computed from the tensor.
+        scale_each (bool, optional): If ``True``, scale each image in the batch of
+            images separately rather than the (min, max) over all images. Default: ``True``.
+    Returns:
+        grid (Tensor): the tensor containing normalized images.
+    """
+    tensor = tensor.clone()  # avoid modifying tensor in-place
+    if value_range is not None and not isinstance(value_range, tuple):
+        raise TypeError("value_range has to be a tuple (min, max) if specified. min and max are numbers")
+
+    def norm_ip(img, low, high):
+        img.clamp_(min=low, max=high)
+        img.sub_(low).div_(max(high - low, 1e-5))
+
+    def norm_range(t, value_range):
+        if value_range is not None:
+            norm_ip(t, value_range[0], value_range[1])
+        else:
+            norm_ip(t, float(t.min()), float(t.max()))
+
+    if scale_each is True:
+        for t in tensor:  # loop over mini-batch dimension
+            norm_range(t, value_range)
+    else:
+        norm_range(tensor, value_range)
+    return tensor
+
+
+def visualize_bbox(img, bbox, label, color=(255,255,255), thickness=1):
+    """Visualizes a single bounding box on the image"""
+    x_min = int(bbox[0])
+    y_min = int(bbox[1])
+    x_max = int(bbox[2])
+    y_max = int(bbox[3])
+    color = tuple(color)
+   
+    cv2.rectangle(img, (x_min, y_min), (x_max, y_max), color=color, thickness=thickness)
+    
+    ((text_width, text_height), _) = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.3, 1)    
+    cv2.rectangle(img, (x_min, y_min - int(1.3 * text_height)), (x_min + text_width, y_min), color, -1)
+    cv2.putText(
+        img,
+        text=label,
+        org=(x_min, y_min - int(0.3 * text_height)),
+        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+        fontScale=0.3, 
+        color=(0, 0, 0), 
+        lineType=cv2.LINE_AA,
+    )
+    return img
+
+def visualize_bboxes(image, bboxes, labels, colors):
+    img = image.copy()
+    bboxes = bboxes[::-1]
+    labels = labels[::-1]
+    colors = colors[::-1]
+    for bbox, label, color in zip(bboxes, labels, colors):
+        img = visualize_bbox(img, bbox, label, color=color)
+    return img
 
 def main(args):
     params = Params(args.config_file)
@@ -75,9 +153,6 @@ def main(args):
     x = torch.stack([transform(fi).cuda() for fi in input_imgs], 0)
     x = x.to(torch.float32)
     
-    # model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list), ratios=eval(anchors_ratios),
-    #                         scales=eval(anchors_scales), seg_classes=len(seg_list), backbone_name=params.backbone_name,
-    #                         seg_mode=seg_mode)
     model = HybridNetsBackbone(params)
     model.load_state_dict(torch.load(args.ckpt, map_location='cuda'))
 
@@ -87,34 +162,17 @@ def main(args):
 
     with torch.no_grad():
         features, regression, classification, anchors, seg = model(x)
+        _, seg = torch.max(seg, dim=1)
+        
+        img_batch = normalize_tensor(x)
+        img_batch = img_batch.cpu().detach()
+        seg_batch = seg.cpu().detach()
 
-        seg_mask_list = []
-        # (B, C, W, H) -> (B, W, H)
-        _, seg_mask = torch.max(seg, 1)
-        seg_mask_list.append(seg_mask)
-        # (B, W, H) -> (W, H)
-        for i in range(seg.size(0)):
-            for seg_class_index, seg_mask in enumerate(seg_mask_list):
-                seg_mask_ = seg_mask[i].squeeze().cpu().numpy()
-                pad_h = int(shapes[i][1][1][1])
-                pad_w = int(shapes[i][1][1][0])
-                seg_mask_ = seg_mask_[pad_h:seg_mask_.shape[0]-pad_h, pad_w:seg_mask_.shape[1]-pad_w]
-                seg_mask_ = cv2.resize(seg_mask_, dsize=shapes[i][0][::-1], interpolation=cv2.INTER_NEAREST)
-                color_seg = np.zeros((seg_mask_.shape[0], seg_mask_.shape[1], 3), dtype=np.uint8)
-                for index, seg_class in enumerate(params.seg_list):
-                        color_seg[seg_mask_ == index+1] = color_list_seg[seg_class]
-                color_seg = color_seg[..., ::-1]  # RGB -> BGR
-
-                color_mask = np.mean(color_seg, 2)  # (H, W, C) -> (H, W), check if any pixel is not background
-                # prepare to show det on 2 different imgs
-                # (with and without seg) -> (full and det_only)
-                det_only_imgs.append(ori_imgs[i].copy())
-                seg_img = ori_imgs[i].copy() if seg_mode == MULTILABEL_MODE else ori_imgs[i]  # do not work on original images if MULTILABEL_MODE
-                seg_img[color_mask != 0] = seg_img[color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
-                seg_img = seg_img.astype(np.uint8)
-                seg_filename = f'{output}/{i}_{params.seg_list[seg_class_index]}_seg.jpg' if seg_mode == MULTILABEL_MODE else \
-                            f'{output}/{i}_seg.jpg'
-                cv2.imwrite(seg_filename, cv2.cvtColor(seg_img, cv2.COLOR_RGB2BGR))
+        seg_color_batch = apply_color(seg_batch)
+        seg_vis_batch = overlay_images_batch(img_batch, seg_color_batch)
+        for i in range(x.shape[0]):
+            seg_vis = torchvision.transforms.ToPILImage()(seg_vis_batch[i])
+            seg_vis.save(f'{output}/{i}_seg.jpg')
 
         regressBoxes = BBoxTransform()
         clipBoxes = ClipBoxes()
@@ -122,20 +180,22 @@ def main(args):
                         anchors, regression, classification,
                         regressBoxes, clipBoxes,
                         threshold, iou_threshold)
+        det_vis_batch = []
+        for i in range(x.shape[0]):
+            boxes = out[i]['rois']
+            cat_names = [obj_list[cat_id] for cat_id in out[i]['class_ids']]
+            scores = out[i]['scores']
+            labels = [f'{cat_name}: {score:.2f}' for cat_name, score in zip(cat_names, scores)]
+            colors = apply_color(out[i]['class_ids'] + 1).tolist()
 
-        for i in range(len(ori_imgs)):
-            out[i]['rois'] = scale_coords(ori_imgs[i][:2], out[i]['rois'], shapes[i][0], shapes[i][1])
-            for j in range(len(out[i]['rois'])):
-                x1, y1, x2, y2 = out[i]['rois'][j].astype(int)
-                obj = obj_list[out[i]['class_ids'][j]]
-                score = float(out[i]['scores'][j])
-                plot_one_box(ori_imgs[i], [x1, y1, x2, y2], label=obj, score=score,
-                            color=color_list[get_index_label(obj, obj_list)])
-                plot_one_box(det_only_imgs[i], [x1, y1, x2, y2], label=obj, score=score,
-                                color=color_list[get_index_label(obj, obj_list)])
+            det_vis = np.array(img_batch[i] * 255, dtype=np.uint8).transpose((1,2,0))
+            det_vis = visualize_bboxes(det_vis, boxes, labels, colors=colors)
+            det_vis = torchvision.transforms.ToPILImage()(det_vis)
+            det_vis.save(f'{output}/{i}_det.png')
 
-            cv2.imwrite(f'{output}/{i}_det.jpg',  cv2.cvtColor(det_only_imgs[i], cv2.COLOR_RGB2BGR))
-            cv2.imwrite(f'{output}/{i}.jpg', cv2.cvtColor(ori_imgs[i], cv2.COLOR_RGB2BGR))
+        # for i in range(x.shape[0]):
+        #     det_vis = torchvision.transforms.ToPILImage()(det_vis_batch[i])
+        #     det_vis.save(f'{output}/{i}_det_new.png')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

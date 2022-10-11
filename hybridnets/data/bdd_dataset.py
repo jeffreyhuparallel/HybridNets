@@ -16,7 +16,7 @@ from hybridnets.utils.constants import *
 
 
 class BddDataset(Dataset):
-    def __init__(self, params, is_train, inputsize=[640, 384], transform=None):
+    def __init__(self, params, is_train, transform=None):
         """
         initial all the characteristic
 
@@ -30,7 +30,7 @@ class BddDataset(Dataset):
         """
         self.is_train = is_train
         self.transform = transform
-        self.inputsize = inputsize
+        self.inputsize = params.model['image_size']
         self.Tensor = transforms.ToTensor()
         img_root = Path(params.dataset['dataroot'])
         label_root = Path(params.dataset['labelroot'])
