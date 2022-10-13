@@ -6,9 +6,10 @@ import os
 from torchvision import transforms
 import torch.nn.functional as F
 
+from hybridnets.config import Params
 from hybridnets.data import build_data_loader
 from hybridnets.utils import smp_metrics
-from hybridnets.utils.utils import postprocess, scale_coords, process_batch, ap_per_class, fitness, BBoxTransform, ClipBoxes, Params
+from hybridnets.utils.utils import postprocess, scale_coords, process_batch, ap_per_class, fitness, BBoxTransform, ClipBoxes
 from hybridnets.backbone import HybridNetsBackbone
 
 
@@ -39,7 +40,7 @@ def test(model, val_dataloader, params):
         inp['annot'] = inp['annot'].cuda()
         inp['segmentation'] = inp['segmentation'].cuda()
 
-        out = model(inp)
+        target = model(inp)
         
         imgs = inp['img']
         annot = inp['annot']
@@ -47,10 +48,10 @@ def test(model, val_dataloader, params):
         filenames = inp['filenames']
         shapes = inp['shapes']
         
-        regression = out["regression"]
-        classification = out["classification"]
-        anchors = out["anchors"]
-        segmentation = out["segmentation"]
+        regression = target["regression"]
+        classification = target["classification"]
+        anchors = target["anchors"]
+        segmentation = target["segmentation"]
 
         out = postprocess(imgs.detach(),
                             torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regression.detach(),

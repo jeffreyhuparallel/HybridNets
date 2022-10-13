@@ -9,8 +9,8 @@ from torch.utils.tensorboard import SummaryWriter
 from torch import nn
 from tqdm import tqdm
 
+from hybridnets.config import Params
 from hybridnets.backbone import HybridNetsBackbone
-from hybridnets.utils.utils import save_checkpoint, Params
 from hybridnets.data import build_data_loader
 from hybridnets.criterion import build_criterion
 
@@ -67,8 +67,8 @@ def main(args):
 
             optimizer.zero_grad(set_to_none=True)
             
-            out = model(inp)
-            losses = criterion(inp, out)
+            target = model(inp)
+            losses = criterion(inp, target)
             
             losses["loss"].backward()
             optimizer.step()

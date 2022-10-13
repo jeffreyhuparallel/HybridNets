@@ -9,10 +9,10 @@ class CriterionCompose(pl.LightningModule):
         self.criterions = nn.ModuleList(criterions)
         self.weights = weights
 
-    def __call__(self, inp, out):
+    def __call__(self, inp, target):
         losses = {}
         for criterion, weight in zip(self.criterions, self.weights):
-            criterion_loss = criterion(inp, out)
+            criterion_loss = criterion(inp, target)
             for loss_name, loss in criterion_loss.items():
                 losses[loss_name] = weight * loss
         losses["loss"] = sum([v for v in losses.values()])
@@ -24,12 +24,12 @@ class DetectionLoss(pl.LightningModule):
         super().__init__()
         self.det_criterion = FocalLoss()
     
-    def __call__(self, inp, out):
+    def __call__(self, inp, target):
         annotations = inp['annot']
         
-        regression = out["regression"]
-        classification = out["classification"]
-        anchors = out["anchors"]
+        regression = target["regression"]
+        classification = target["classification"]
+        anchors = target["anchors"]
 
         cls_loss, reg_loss = self.det_criterion(classification, regression, anchors, annotations)
 
@@ -45,9 +45,9 @@ class SegmentationLoss(pl.LightningModule):
         self.seg_criterion1 = TverskyLoss(mode=params.seg_mode, alpha=0.7, beta=0.3, gamma=4.0/3, from_logits=True)
         self.seg_criterion2 = FocalLossSeg(mode=params.seg_mode, alpha=0.25)
     
-    def __call__(self, inp, out):
+    def __call__(self, inp, target):
         seg_annot = inp['segmentation']
-        segmentation = out["segmentation"]
+        segmentation = target["segmentation"]
         tversky_loss = self.seg_criterion1(segmentation, seg_annot)
         focal_loss = self.seg_criterion2(segmentation, seg_annot)
         seg_loss = tversky_loss + 1 * focal_loss

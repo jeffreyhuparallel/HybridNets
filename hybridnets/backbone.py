@@ -116,13 +116,17 @@ class HybridNetsBackbone(nn.Module):
         classification = self.classifier(features)
         anchors = self.anchors(x, x.dtype)
         
-        out = {
+        target = {
             "features": features,
             "regression": regression,
             "classification": classification,
             "anchors": anchors,
             "segmentation": segmentation,
         }
+        return target
+    
+    def postprocess(self, inp, target):
+        out = {}
         return out
 
     def initialize_decoder(self, module):

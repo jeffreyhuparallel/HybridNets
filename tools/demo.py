@@ -122,13 +122,13 @@ def main(args):
 
     with torch.no_grad():
         inp = {"img": x}
-        out = model(inp)
+        target = model(inp)
         
-        features = out["features"]
-        regression = out["regression"]
-        classification = out["classification"]
-        anchors = out["anchors"]
-        seg = out["segmentation"]
+        features = target["features"]
+        regression = target["regression"]
+        classification = target["classification"]
+        anchors = target["anchors"]
+        seg = target["segmentation"]
         
         _, seg = torch.max(seg, dim=1)
         
