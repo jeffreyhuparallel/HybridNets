@@ -6,11 +6,13 @@ from hybridnets.encoders import get_encoder
 from hybridnets.model import BiFPN, Regressor, Classifier, BiFPNDecoder
 from hybridnets.model import SegmentationHead
 from hybridnets.utils.utils import Anchors, init_weights
+from hybridnets.utils.utils import BBoxTransform, ClipBoxes, postprocess
 from hybridnets.utils.constants import *
 
 class HybridNetsBackbone(nn.Module):
     def __init__(self, params):
-        super(HybridNetsBackbone, self).__init__()
+        super().__init__()
+        self.params = params
         self.compound_coef = params.compound_coef
         self.num_classes = len(params.obj_list)
         self.seg_classes = len(params.seg_list)
@@ -126,7 +128,26 @@ class HybridNetsBackbone(nn.Module):
         return target
     
     def postprocess(self, inp, target):
-        out = {}
+        image = inp["img"]
+        features = target["features"]
+        regression = target["regression"]
+        classification = target["classification"]
+        anchors = target["anchors"]
+        seg = target["segmentation"]
+        
+        _, seg = torch.max(seg, dim=1)
+        
+        regressBoxes = BBoxTransform()
+        clipBoxes = ClipBoxes()
+        detection = postprocess(image,
+                        anchors, regression, classification,
+                        regressBoxes, clipBoxes,
+                        self.params.conf_thres, self.params.iou_thres)
+        
+        out = {
+            "segmentation": seg,
+            "detection": detection,
+        }
         return out
 
     def initialize_decoder(self, module):

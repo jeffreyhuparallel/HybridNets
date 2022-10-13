@@ -5,18 +5,15 @@ import torchvision
 import cv2
 from PIL import Image
 import numpy as np
-from glob import glob
 import os
 from torchvision import transforms
 import argparse
-from collections import OrderedDict
-from torch.nn import functional as F
+from tqdm import tqdm
 
 from hybridnets.config import Params
 from hybridnets.backbone import HybridNetsBackbone
-from hybridnets.utils.utils import BBoxTransform, ClipBoxes, postprocess
 
-from railyard.util import read_file, save_file
+from railyard.util import read_file, save_file, get_file_names
 from railyard.util.visualization import apply_color, overlay_images_batch, overlay_images
 
 def normalize_tensor(
@@ -97,21 +94,16 @@ def main(args):
     obj_list = params.obj_list
     output_dir = params.output_dir
     
-    threshold = 0.25
-    iou_threshold = 0.3
-    source = "demo/image"
-    img_path = glob(f'{source}/*.jpg') + glob(f'{source}/*.png')
-    ori_imgs = [read_file(i) for i in img_path]
-    print(f"FOUND {len(ori_imgs)} IMAGES")
-        
+    batch_size = 1
+    image_dir = "demo/image"
+    file_names = get_file_names(image_dir, ext=".jpg")
+    sample_names = [os.path.splitext(fn)[0] for fn in file_names]
+    
     transform = transforms.Compose([
         transforms.Resize((384, 640)),
         transforms.ToTensor(),
         transforms.Normalize(mean=params.mean, std=params.std),
     ])
-
-    x = torch.stack([transform(img).cuda() for img in ori_imgs], 0)
-    x = x.to(torch.float32)
     
     model = HybridNetsBackbone(params)
     model.load_state_dict(torch.load(args.ckpt, map_location='cuda'))
@@ -121,45 +113,39 @@ def main(args):
     model = model.cuda()
 
     with torch.no_grad():
-        inp = {"img": x}
-        target = model(inp)
-        
-        features = target["features"]
-        regression = target["regression"]
-        classification = target["classification"]
-        anchors = target["anchors"]
-        seg = target["segmentation"]
-        
-        _, seg = torch.max(seg, dim=1)
-        
-        img_batch = normalize_tensor(x)
-        img_batch = img_batch.cpu().detach()
-        seg_batch = seg.cpu().detach()
+        for sample_name in tqdm(sample_names):
+            image = read_file(os.path.join(image_dir, f"{sample_name}.jpg"))
+            x = transform(image)
+            x = torch.unsqueeze(x, dim=0)
+            x = x.to(torch.float32).cuda()
+            inp = {"img": x}
+            
+            target = model(inp)
+            out = model.postprocess(inp, target)
+            
+            img_batch = normalize_tensor(inp["img"]).cpu().detach()
+            seg_batch = out["segmentation"].cpu().detach()
+            det_batch = out["detection"]
 
-        seg_color_batch = apply_color(seg_batch)
-        seg_vis_batch = overlay_images_batch(img_batch, seg_color_batch)
-        for i in range(x.shape[0]):
-            seg_vis = torchvision.transforms.ToPILImage()(seg_vis_batch[i])
-            save_file(seg_vis, os.path.join(output_dir, f"demo_result/{i}_seg.jpg"))
+            seg_color_batch = apply_color(seg_batch)
+            seg_vis_batch = overlay_images_batch(img_batch, seg_color_batch)
+            for i in range(batch_size):
+                seg_vis = torchvision.transforms.ToPILImage()(seg_vis_batch[i])
+                save_file(seg_vis, os.path.join(output_dir, f"demo_result/seg_vis/{sample_name}.jpg"))
 
-        regressBoxes = BBoxTransform()
-        clipBoxes = ClipBoxes()
-        out = postprocess(x,
-                        anchors, regression, classification,
-                        regressBoxes, clipBoxes,
-                        threshold, iou_threshold)
-        det_vis_batch = []
-        for i in range(x.shape[0]):
-            boxes = out[i]['rois']
-            cat_names = [obj_list[cat_id] for cat_id in out[i]['class_ids']]
-            scores = out[i]['scores']
-            labels = [f'{cat_name}: {score:.2f}' for cat_name, score in zip(cat_names, scores)]
-            colors = apply_color(out[i]['class_ids'] + 1).tolist()
+            for i in range(batch_size):
+                det = det_batch[i]
+                
+                boxes = det['rois']
+                cat_names = [obj_list[cat_id] for cat_id in det['class_ids']]
+                scores = det['scores']
+                labels = [f'{cat_name}: {score:.2f}' for cat_name, score in zip(cat_names, scores)]
+                colors = apply_color(det['class_ids'] + 1).tolist()
 
-            det_vis = np.array(img_batch[i] * 255, dtype=np.uint8).transpose((1,2,0))
-            det_vis = visualize_bboxes(det_vis, boxes, labels, colors=colors)
-            det_vis = torchvision.transforms.ToPILImage()(det_vis)
-            save_file(det_vis, os.path.join(output_dir, f"demo_result/{i}_det.png"))
+                det_vis = np.array(img_batch[i] * 255, dtype=np.uint8).transpose((1,2,0))
+                det_vis = visualize_bboxes(det_vis, boxes, labels, colors=colors)
+                det_vis = torchvision.transforms.ToPILImage()(det_vis)
+                save_file(det_vis, os.path.join(output_dir, f"demo_result/det_vis/{sample_name}.png"))
             
 
 if __name__ == "__main__":

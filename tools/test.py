@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from hybridnets.config import Params
 from hybridnets.data import build_data_loader
 from hybridnets.utils import smp_metrics
-from hybridnets.utils.utils import postprocess, scale_coords, process_batch, ap_per_class, fitness, BBoxTransform, ClipBoxes
+from hybridnets.utils.utils import scale_coords, process_batch, ap_per_class, fitness
 from hybridnets.backbone import HybridNetsBackbone
 
 
@@ -32,39 +32,27 @@ def test(model, val_dataloader, params):
     p, r, f1, mp, mr, map50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     iou_ls = [[] for _ in range(ncs)]
     acc_ls = [[] for _ in range(ncs)]
-    regressBoxes = BBoxTransform()
-    clipBoxes = ClipBoxes()
 
     for idx, inp in enumerate(tqdm(val_dataloader)):
-        inp['img'] = inp['img'].cuda()
-        inp['annot'] = inp['annot'].cuda()
-        inp['segmentation'] = inp['segmentation'].cuda()
+        for k, v in inp.items():
+            inp[k] = v.cuda() if torch.is_tensor(v) else v
 
         target = model(inp)
+        out = model.postprocess(inp, target)
         
         imgs = inp['img']
         annot = inp['annot']
         seg_annot = inp['segmentation']
-        filenames = inp['filenames']
         shapes = inp['shapes']
-        
-        regression = target["regression"]
-        classification = target["classification"]
-        anchors = target["anchors"]
-        segmentation = target["segmentation"]
-
-        out = postprocess(imgs.detach(),
-                            torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regression.detach(),
-                            classification.detach(),
-                            regressBoxes, clipBoxes,
-                            params.conf_thres, params.iou_thres)  # 0.5, 0.3
+        seg = out["segmentation"]
+        det = out["detection"]
 
         for i in range(annot.size(0)):
             seen += 1
             labels = annot[i]
             labels = labels[labels[:, 4] != -1]
 
-            ou = out[i]
+            ou = det[i]
             nl = len(labels)
 
             pred = np.column_stack([ou['rois'], ou['scores']])
@@ -86,11 +74,8 @@ def test(model, val_dataloader, params):
             else:
                 correct = torch.zeros(pred.shape[0], num_thresholds, dtype=torch.bool)
             stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), target_class))
-    
-        segmentation = segmentation.log_softmax(dim=1).exp()
-        _, segmentation = torch.max(segmentation, 1)  # (bs, C, H, W) -> (bs, H, W)
 
-        tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation, seg_annot, mode=params.seg_mode,
+        tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(seg, seg_annot, mode=params.seg_mode,
                                                                 threshold=None, num_classes=ncs)
         iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
         acc = smp_metrics.balanced_accuracy(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')

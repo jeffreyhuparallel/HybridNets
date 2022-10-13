@@ -61,9 +61,8 @@ def main(args):
     model.train()
     for epoch in range(params.num_epochs):
         for idx, inp in enumerate(tqdm(train_dataloader)):
-            inp['img'] = inp['img'].cuda()
-            inp['annot'] = inp['annot'].cuda()
-            inp['segmentation'] = inp['segmentation'].cuda()
+            for k, v in inp.items():
+                inp[k] = v.cuda() if torch.is_tensor(v) else v
 
             optimizer.zero_grad(set_to_none=True)
             
