@@ -5,23 +5,8 @@ import torch.nn.functional as F
 import math
 from functools import partial
 
-from hybridnets.loss import FocalLoss, FocalLossSeg, TverskyLoss
-from hybridnets.criterion import build_criterion
-
 def nms(dets, thresh):
     return nms_torch(dets[:, :4], dets[:, 4], thresh)
-
-
-class ModelWithLoss(nn.Module):
-    def __init__(self, model, params):
-        super().__init__()
-        self.model = model
-        self.criterion = build_criterion(params)
-
-    def forward(self, inp):
-        out = self.model(inp)
-        losses = self.criterion(inp, out)
-        return losses, out
 
 
 class SeparableConvBlock(nn.Module):

@@ -24,8 +24,6 @@ def calc_iou(a, b):
     ua = torch.clamp(ua, min=1e-8)
     intersection = iw * ih
     IoU = intersection / ua
-   
-
     return IoU
 
 

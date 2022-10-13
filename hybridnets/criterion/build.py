@@ -1,7 +1,7 @@
 import pytorch_lightning as pl
 import torch.nn as nn
 
-from hybridnets.loss import FocalLoss, FocalLossSeg, TverskyLoss
+from hybridnets.criterion.loss import FocalLoss, FocalLossSeg, TverskyLoss
 
 class CriterionCompose(pl.LightningModule):
     def __init__(self, criterions, weights):
