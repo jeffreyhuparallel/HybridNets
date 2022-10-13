@@ -21,21 +21,20 @@ def val(params, model, val_dataloader, writer, step):
     loss_regression_ls = []
     loss_classification_ls = []
     loss_segmentation_ls = []
-    for idx, data in enumerate(tqdm(val_dataloader)):
-        imgs = data['img']
-        annot = data['annot']
-        seg_annot = data['segmentation']
+    for idx, inp in enumerate(tqdm(val_dataloader)):
+        inp['img'] = inp['img'].cuda()
+        inp['annot'] = inp['annot'].cuda()
+        inp['segmentation'] = inp['segmentation'].cuda()
+        
+        imgs = inp['img']
+        annot = inp['annot']
+        seg_annot = inp['segmentation']
 
-        imgs = imgs.cuda()
-        annot = annot.cuda()
-        seg_annot = seg_annot.cuda()
-
-        cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
-                                                                                                seg_annot,
-                                                                                                obj_list=params.obj_list)
-        cls_loss = cls_loss.mean()
-        reg_loss = reg_loss.mean()
-        seg_loss = seg_loss.mean()
+        losses, out = model(inp)
+        
+        cls_loss = losses["cls_loss"].mean()
+        reg_loss = losses["reg_loss"].mean()
+        seg_loss = losses["seg_loss"].mean()
         loss = cls_loss + reg_loss + seg_loss
 
         loss_classification_ls.append(cls_loss.item())
@@ -76,31 +75,34 @@ def main(args):
     if args.ckpt is not None:
         model.load_state_dict(torch.load(args.ckpt))
 
-    model = ModelWithLoss(model, debug=False)
-    model = model.to(memory_format=torch.channels_last)
+    model = ModelWithLoss(model, params)
     model = model.cuda()
 
     optimizer = torch.optim.AdamW(model.parameters(), params.lr)
 
     model.train()
     for epoch in range(params.num_epochs):
-        for idx, data in enumerate(tqdm(train_dataloader)):
-            imgs = data['img']
-            annot = data['annot']
-            seg_annot = data['segmentation']
-
-            imgs = imgs.to(device="cuda", memory_format=torch.channels_last)
-            annot = annot.cuda()
-            seg_annot = seg_annot.cuda()
+        for idx, inp in enumerate(tqdm(train_dataloader)):
+            inp['img'] = inp['img'].cuda()
+            inp['annot'] = inp['annot'].cuda()
+            inp['segmentation'] = inp['segmentation'].cuda()
+            
+            imgs = inp['img']
+            annot = inp['annot']
+            seg_annot = inp['segmentation']
 
             optimizer.zero_grad(set_to_none=True)
             
-            cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
-                                                                                                    seg_annot,
-                                                                                                    obj_list=params.obj_list)
-            cls_loss = cls_loss.mean()
-            reg_loss = reg_loss.mean()
-            seg_loss = seg_loss.mean()
+            losses, out = model(inp)
+            regression = out["regression"]
+            classification = out["classification"]
+            anchors = out["anchors"]
+            segmentation = out["segmentation"]
+            
+            cls_loss = losses["cls_loss"].mean()
+            reg_loss = losses["reg_loss"].mean()
+            seg_loss = losses["seg_loss"].mean()
+            
             loss = cls_loss + reg_loss + seg_loss
             loss.backward()
             optimizer.step()

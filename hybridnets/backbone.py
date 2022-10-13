@@ -9,7 +9,7 @@ from hybridnets.utils.utils import Anchors, init_weights
 from hybridnets.utils.constants import *
 
 class HybridNetsBackbone(nn.Module):
-    def __init__(self, params, onnx_export=False):
+    def __init__(self, params):
         super(HybridNetsBackbone, self).__init__()
         self.compound_coef = params.compound_coef
         self.num_classes = len(params.obj_list)
@@ -19,7 +19,6 @@ class HybridNetsBackbone(nn.Module):
         self.anchors_scales = eval(params.anchors_scales)
         self.anchors_ratios = eval(params.anchors_ratios)
         self.num_scales = len(self.anchors_scales)
-        self.onnx_export = onnx_export
 
         self.num_anchors = len(self.anchors_ratios) * self.num_scales
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6, 7]
@@ -50,13 +49,13 @@ class HybridNetsBackbone(nn.Module):
                     True if _ == 0 else False,
                     attention=True if self.compound_coef < 6 else False,
                     use_p8=self.compound_coef > 7,
-                    onnx_export=self.onnx_export)
+                    onnx_export=False)
               for _ in range(self.fpn_cell_repeats[self.compound_coef])])
 
         self.regressor = Regressor(in_channels=self.fpn_num_filters[self.compound_coef], num_anchors=self.num_anchors,
                                    num_layers=self.box_class_repeats[self.compound_coef],
                                    pyramid_levels=self.pyramid_levels[self.compound_coef],
-                                   onnx_export=self.onnx_export)
+                                   onnx_export=False)
 
         '''Modified by Dat Vu'''
         # self.decoder = DecoderModule()
@@ -74,7 +73,7 @@ class HybridNetsBackbone(nn.Module):
                                      num_classes=self.num_classes,
                                      num_layers=self.box_class_repeats[self.compound_coef],
                                      pyramid_levels=self.pyramid_levels[self.compound_coef],
-                                     onnx_export=self.onnx_export)
+                                     onnx_export=False)
 
         if self.backbone_name == "efficientnet":
             # EfficientNet_Pytorch
@@ -87,13 +86,9 @@ class HybridNetsBackbone(nn.Module):
         else:
             self.encoder = timm.create_model(self.backbone_name, pretrained=True, features_only=True, out_indices=(1,2,3,4))  # P2,P3,P4,P5
 
-        if not self.onnx_export:
-            self.anchors = Anchors(self.anchors_scales, self.anchors_ratios, anchor_scale=self.anchor_scale[self.compound_coef],
-                                   pyramid_levels=(torch.arange(self.pyramid_levels[self.compound_coef]) + 3).tolist(),
-                                   onnx_export=self.onnx_export)
-        else:
-            ## TODO: timm
-            self.encoder.set_swish(memory_efficient=False)
+        self.anchors = Anchors(self.anchors_scales, self.anchors_ratios, anchor_scale=self.anchor_scale[self.compound_coef],
+                                pyramid_levels=(torch.arange(self.pyramid_levels[self.compound_coef]) + 3).tolist(),
+                                onnx_export=False)
     
         self.initialize_decoder(self.bifpndecoder)
         self.initialize_head(self.segmentation_head)
@@ -105,28 +100,30 @@ class HybridNetsBackbone(nn.Module):
             if isinstance(m, nn.BatchNorm2d):
                 m.eval()
 
-    def forward(self, inputs):
-        # p1, p2, p3, p4, p5 = self.backbone_net(inputs)
-        p2, p3, p4, p5 = self.encoder(inputs)[-4:]  # self.backbone_net(inputs)
+    def forward(self, inp):
+        x = inp['img']
+        
+        p2, p3, p4, p5 = self.encoder(x)[-4:]
 
         features = (p3, p4, p5)
-
         features = self.bifpn(features)
-        
         p3,p4,p5,p6,p7 = features
         
         outputs = self.bifpndecoder((p2,p3,p4,p5,p6,p7))
 
         segmentation = self.segmentation_head(outputs)
-        
         regression = self.regressor(features)
         classification = self.classifier(features)
+        anchors = self.anchors(x, x.dtype)
         
-        if not self.onnx_export:
-            anchors = self.anchors(inputs, inputs.dtype)
-            return features, regression, classification, anchors, segmentation
-        else:
-            return regression, classification, segmentation
+        out = {
+            "features": features,
+            "regression": regression,
+            "classification": classification,
+            "anchors": anchors,
+            "segmentation": segmentation,
+        }
+        return out
 
     def initialize_decoder(self, module):
         for m in module.modules():

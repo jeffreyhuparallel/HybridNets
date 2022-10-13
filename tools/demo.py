@@ -161,7 +161,14 @@ def main(args):
     model = model.cuda()
 
     with torch.no_grad():
-        features, regression, classification, anchors, seg = model(x)
+        out = model(x)
+        
+        features = out["features"]
+        regression = out["regression"]
+        classification = out["classification"]
+        anchors = out["anchors"]
+        seg = out["segmentation"]
+        
         _, seg = torch.max(seg, dim=1)
         
         img_batch = normalize_tensor(x)
@@ -192,10 +199,7 @@ def main(args):
             det_vis = visualize_bboxes(det_vis, boxes, labels, colors=colors)
             det_vis = torchvision.transforms.ToPILImage()(det_vis)
             det_vis.save(f'{output}/{i}_det.png')
-
-        # for i in range(x.shape[0]):
-        #     det_vis = torchvision.transforms.ToPILImage()(det_vis_batch[i])
-        #     det_vis.save(f'{output}/{i}_det_new.png')
+            
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

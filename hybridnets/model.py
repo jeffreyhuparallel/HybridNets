@@ -4,60 +4,47 @@ from torchvision.ops.boxes import nms as nms_torch
 import torch.nn.functional as F
 import math
 from functools import partial
-from hybridnets.loss import FocalLoss, FocalLossSeg, TverskyLoss
 
+from hybridnets.loss import FocalLoss, FocalLossSeg, TverskyLoss
+from hybridnets.criterion import build_criterion
 
 def nms(dets, thresh):
     return nms_torch(dets[:, :4], dets[:, 4], thresh)
 
 
 class ModelWithLoss(nn.Module):
-    def __init__(self, model, debug=False):
+    def __init__(self, model, params):
         super().__init__()
         self.model = model
+        # self.criterion = build_criterion(params)
         self.criterion = FocalLoss()
         self.seg_criterion1 = TverskyLoss(mode=self.model.seg_mode, alpha=0.7, beta=0.3, gamma=4.0/3, from_logits=True)
         self.seg_criterion2 = FocalLossSeg(mode=self.model.seg_mode, alpha=0.25)
-        self.debug = debug
 
-    def forward(self, imgs, annotations, seg_annot, obj_list=None):
-        _, regression, classification, anchors, segmentation = self.model(imgs)
+    def forward(self, inp):
+        imgs = inp['img']
+        annotations = inp['annot']
+        seg_annot = inp['segmentation']
+        
+        out = self.model(inp)
+        # losses = self.criterion(inp, out)
+        
+        regression = out["regression"]
+        classification = out["classification"]
+        anchors = out["anchors"]
+        segmentation = out["segmentation"]
 
-        if self.debug:
-            cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations,
-                                                imgs=imgs, obj_list=obj_list)
-            tversky_loss = self.seg_criterion1(segmentation, seg_annot)
-            focal_loss = self.seg_criterion2(segmentation, seg_annot)
-        else:
-            cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations)
-            tversky_loss = self.seg_criterion1(segmentation, seg_annot)
-            focal_loss = self.seg_criterion2(segmentation, seg_annot)
-
-            # Visualization
-            # seg_0 = seg_annot[0]
-            # # print('bbb', seg_0.shape)
-            # seg_0 = torch.argmax(seg_0, dim = 0)
-            # # print('before', seg_0.shape)
-            # seg_0 = seg_0.cpu().numpy()
-            #     #.transpose(1, 2, 0)
-            # print(seg_0.shape)
-            #
-            # anh = np.zeros((384,640,3))
-            #
-            # anh[seg_0 == 0] = (255,0,0)
-            # anh[seg_0 == 1] = (0,255,0)
-            # anh[seg_0 == 2] = (0,0,255)
-            #
-            # anh = np.uint8(anh)
-            #
-            # cv2.imwrite('anh.jpg',anh)
+        cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations)
+        tversky_loss = self.seg_criterion1(segmentation, seg_annot)
+        focal_loss = self.seg_criterion2(segmentation, seg_annot)
 
         seg_loss = tversky_loss + 1 * focal_loss
-        # print("TVERSKY", tversky_loss)
-        # print("FOCAL", focal_loss)
-        # seg_loss *= 50
-
-        return cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation
+        losses = {
+            "cls_loss": cls_loss,
+            "reg_loss": reg_loss,
+            "seg_loss": seg_loss,
+        }
+        return losses, out
 
 
 class SeparableConvBlock(nn.Module):

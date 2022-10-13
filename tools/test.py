@@ -38,23 +38,26 @@ def test(model, val_dataloader, params):
     regressBoxes = BBoxTransform()
     clipBoxes = ClipBoxes()
 
-    for iter, data in enumerate(tqdm(val_dataloader)):
-        imgs = data['img']
-        annot = data['annot']
-        seg_annot = data['segmentation']
-        filenames = data['filenames']
-        shapes = data['shapes']
+    for idx, inp in enumerate(tqdm(val_dataloader)):
+        inp['img'] = inp['img'].cuda()
+        inp['annot'] = inp['annot'].cuda()
+        inp['segmentation'] = inp['segmentation'].cuda()
+        
+        imgs = inp['img']
+        annot = inp['annot']
+        seg_annot = inp['segmentation']
+        filenames = inp['filenames']
+        shapes = inp['shapes']
 
-        imgs = imgs.cuda()
-        annot = annot.cuda()
-        seg_annot = seg_annot.cuda()
-
-        cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
-                                                                                                seg_annot,
-                                                                                                obj_list=params.obj_list)
-        cls_loss = cls_loss.mean()
-        reg_loss = reg_loss.mean()
-        seg_loss = seg_loss.mean()
+        losses, out = model(inp)
+        regression = out["regression"]
+        classification = out["classification"]
+        anchors = out["anchors"]
+        segmentation = out["segmentation"]
+        
+        cls_loss = losses["cls_loss"].mean()
+        reg_loss = losses["reg_loss"].mean()
+        seg_loss = losses["seg_loss"].mean()
 
         out = postprocess(imgs.detach(),
                             torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regression.detach(),
@@ -173,7 +176,7 @@ def main(args):
     if args.ckpt is not None:
         model.load_state_dict(torch.load(args.ckpt))
 
-    model = ModelWithLoss(model, debug=False)
+    model = ModelWithLoss(model, params)
     model.requires_grad_(False)
     model.cuda()
 
