@@ -161,7 +161,8 @@ def main(args):
     model = model.cuda()
 
     with torch.no_grad():
-        out = model(x)
+        inp = {"img": x}
+        out = model(inp)
         
         features = out["features"]
         regression = out["regression"]

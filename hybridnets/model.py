@@ -16,34 +16,11 @@ class ModelWithLoss(nn.Module):
     def __init__(self, model, params):
         super().__init__()
         self.model = model
-        # self.criterion = build_criterion(params)
-        self.criterion = FocalLoss()
-        self.seg_criterion1 = TverskyLoss(mode=self.model.seg_mode, alpha=0.7, beta=0.3, gamma=4.0/3, from_logits=True)
-        self.seg_criterion2 = FocalLossSeg(mode=self.model.seg_mode, alpha=0.25)
+        self.criterion = build_criterion(params)
 
     def forward(self, inp):
-        imgs = inp['img']
-        annotations = inp['annot']
-        seg_annot = inp['segmentation']
-        
         out = self.model(inp)
-        # losses = self.criterion(inp, out)
-        
-        regression = out["regression"]
-        classification = out["classification"]
-        anchors = out["anchors"]
-        segmentation = out["segmentation"]
-
-        cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations)
-        tversky_loss = self.seg_criterion1(segmentation, seg_annot)
-        focal_loss = self.seg_criterion2(segmentation, seg_annot)
-
-        seg_loss = tversky_loss + 1 * focal_loss
-        losses = {
-            "cls_loss": cls_loss,
-            "reg_loss": reg_loss,
-            "seg_loss": seg_loss,
-        }
+        losses = self.criterion(inp, out)
         return losses, out
 
 

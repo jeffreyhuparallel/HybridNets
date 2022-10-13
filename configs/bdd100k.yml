@@ -60,8 +60,6 @@ model:
   image_size:
   - 640
   - 384
-need_autoanchor: false
-pin_memory: true
 
 backbone_name: "efficientnet"
 compound_coef: 3

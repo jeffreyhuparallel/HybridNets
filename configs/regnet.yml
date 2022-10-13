@@ -60,7 +60,6 @@ model:
   image_size:
   - 640
   - 384
-need_autoanchor: false
 
 backbone_name: "regnetx_004"
 compound_coef: 3
