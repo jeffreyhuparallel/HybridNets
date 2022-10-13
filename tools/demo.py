@@ -92,10 +92,11 @@ def visualize_bboxes(image, bboxes, labels, colors):
 def main(args):
     params = Params(args.config_file)
     obj_list = params.obj_list
-    output_dir = params.output_dir
-    
-    batch_size = 1
+    output_dir = os.path.join(params.output_dir, "rail50k")
     image_dir = "demo/image"
+    image_dir = "data/datasets/rail50k/image"
+    batch_size = 1
+    
     file_names = get_file_names(image_dir, ext=".jpg")
     sample_names = [os.path.splitext(fn)[0] for fn in file_names]
     
@@ -131,21 +132,22 @@ def main(args):
             seg_vis_batch = overlay_images_batch(img_batch, seg_color_batch)
             for i in range(batch_size):
                 seg_vis = torchvision.transforms.ToPILImage()(seg_vis_batch[i])
-                save_file(seg_vis, os.path.join(output_dir, f"demo_result/seg_vis/{sample_name}.jpg"))
+                save_file(seg_vis, os.path.join(output_dir, f"seg_vis/{sample_name}.jpg"))
 
             for i in range(batch_size):
                 det = det_batch[i]
                 
                 boxes = det['rois']
-                cat_names = [obj_list[cat_id] for cat_id in det['class_ids']]
                 scores = det['scores']
+                cat_ids = np.array(det["class_ids"], dtype=int)
+                cat_names = [obj_list[cat_id] for cat_id in cat_ids]
+                colors = apply_color(cat_ids + 1).tolist()
                 labels = [f'{cat_name}: {score:.2f}' for cat_name, score in zip(cat_names, scores)]
-                colors = apply_color(det['class_ids'] + 1).tolist()
 
                 det_vis = np.array(img_batch[i] * 255, dtype=np.uint8).transpose((1,2,0))
                 det_vis = visualize_bboxes(det_vis, boxes, labels, colors=colors)
                 det_vis = torchvision.transforms.ToPILImage()(det_vis)
-                save_file(det_vis, os.path.join(output_dir, f"demo_result/det_vis/{sample_name}.png"))
+                save_file(det_vis, os.path.join(output_dir, f"det_vis/{sample_name}.png"))
             
 
 if __name__ == "__main__":
