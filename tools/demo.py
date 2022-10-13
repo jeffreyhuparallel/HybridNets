@@ -2,7 +2,6 @@ from typing import Union, List, Optional, Tuple
 import time
 import torch
 import torchvision
-from torch.backends import cudnn
 import cv2
 from PIL import Image
 import numpy as np
@@ -13,12 +12,11 @@ import argparse
 from collections import OrderedDict
 from torch.nn import functional as F
 
+from hybridnets.config import Params
 from hybridnets.backbone import HybridNetsBackbone
-from hybridnets.utils.constants import MULTILABEL_MODE, MULTICLASS_MODE, BINARY_MODE
-from hybridnets.utils.plot import STANDARD_COLORS, standard_to_bgr, get_index_label, plot_one_box
-from hybridnets.utils.utils import letterbox, scale_coords, postprocess, BBoxTransform, ClipBoxes, restricted_float, \
-    boolean_string, Params
+from hybridnets.utils.utils import BBoxTransform, ClipBoxes, postprocess
 
+from railyard.util import read_file, save_file
 from railyard.util.visualization import apply_color, overlay_images_batch, overlay_images
 
 def normalize_tensor(
@@ -96,61 +94,23 @@ def visualize_bboxes(image, bboxes, labels, colors):
 
 def main(args):
     params = Params(args.config_file)
-    source = "demo/image"
-    output = os.path.join(params.output_dir, "demo_result")
-    os.makedirs(output, exist_ok=True)
+    obj_list = params.obj_list
+    output_dir = params.output_dir
     
-    img_path = glob(f'{source}/*.jpg') + glob(f'{source}/*.png')
-
-    color_list_seg = {}
-    for seg_class in params.seg_list:
-        color_list_seg[seg_class] = list(np.random.choice(range(256), size=3))
-    compound_coef = params.compound_coef
-    seg_mode = params.seg_mode
-    input_imgs = []
-    shapes = []
-    det_only_imgs = []
-
-    anchors_ratios = params.anchors_ratios
-    anchors_scales = params.anchors_scales
-
     threshold = 0.25
     iou_threshold = 0.3
-
-    cudnn.fastest = True
-    cudnn.benchmark = True
-
-    obj_list = params.obj_list
-    seg_list = params.seg_list
-
-    color_list = standard_to_bgr(STANDARD_COLORS)
-    ori_imgs = [cv2.imread(i, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION) for i in img_path]
-    ori_imgs = [cv2.cvtColor(i, cv2.COLOR_BGR2RGB) for i in ori_imgs]
-    ori_imgs = [cv2.resize(i, (640,384)) for i in ori_imgs]
+    source = "demo/image"
+    img_path = glob(f'{source}/*.jpg') + glob(f'{source}/*.png')
+    ori_imgs = [read_file(i) for i in img_path]
     print(f"FOUND {len(ori_imgs)} IMAGES")
-    resized_shape = params.model['image_size']
-    if isinstance(resized_shape, list):
-        resized_shape = max(resized_shape)
-    normalize = transforms.Normalize(
-        mean=params.mean, std=params.std
-    )
+        
     transform = transforms.Compose([
+        transforms.Resize((384, 640)),
         transforms.ToTensor(),
-        normalize,
+        transforms.Normalize(mean=params.mean, std=params.std),
     ])
-    for ori_img in ori_imgs:
-        h0, w0 = ori_img.shape[:2]  # orig hw
-        r = resized_shape / max(h0, w0)  # resize image to img_size
-        input_img = cv2.resize(ori_img, (int(w0 * r), int(h0 * r)), interpolation=cv2.INTER_AREA)
-        h, w = input_img.shape[:2]
 
-        (input_img, _), ratio, pad = letterbox((input_img, None), resized_shape, auto=True,
-                                                scaleup=False)
-
-        input_imgs.append(input_img)
-        shapes.append(((h0, w0), ((h / h0, w / w0), pad)))  # for COCO mAP rescaling
-
-    x = torch.stack([transform(fi).cuda() for fi in input_imgs], 0)
+    x = torch.stack([transform(img).cuda() for img in ori_imgs], 0)
     x = x.to(torch.float32)
     
     model = HybridNetsBackbone(params)
@@ -180,7 +140,7 @@ def main(args):
         seg_vis_batch = overlay_images_batch(img_batch, seg_color_batch)
         for i in range(x.shape[0]):
             seg_vis = torchvision.transforms.ToPILImage()(seg_vis_batch[i])
-            seg_vis.save(f'{output}/{i}_seg.jpg')
+            save_file(seg_vis, os.path.join(output_dir, f"demo_result/{i}_seg.jpg"))
 
         regressBoxes = BBoxTransform()
         clipBoxes = ClipBoxes()
@@ -199,7 +159,7 @@ def main(args):
             det_vis = np.array(img_batch[i] * 255, dtype=np.uint8).transpose((1,2,0))
             det_vis = visualize_bboxes(det_vis, boxes, labels, colors=colors)
             det_vis = torchvision.transforms.ToPILImage()(det_vis)
-            det_vis.save(f'{output}/{i}_det.png')
+            save_file(det_vis, os.path.join(output_dir, f"demo_result/{i}_det.png"))
             
 
 if __name__ == "__main__":
