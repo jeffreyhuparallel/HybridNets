@@ -92,9 +92,8 @@ def visualize_bboxes(image, bboxes, labels, colors):
 def main(args):
     params = Params(args.config_file)
     obj_list = params.obj_list
-    output_dir = os.path.join(params.output_dir, "rail50k")
+    output_dir = os.path.join(params.output_dir, "demo")
     image_dir = "demo/image"
-    image_dir = "data/datasets/rail50k/image"
     batch_size = 1
     
     file_names = get_file_names(image_dir, ext=".jpg")
