@@ -1,6 +1,8 @@
+import numpy as np
 import torch
 from torch import nn
 import timm
+import torchvision
 
 from hybridnets.encoders import get_encoder
 from hybridnets.modeling.model import BiFPN, Regressor, Classifier, BiFPNDecoder
@@ -9,7 +11,8 @@ from hybridnets.utils.utils import Anchors, init_weights
 from hybridnets.utils.utils import BBoxTransform, ClipBoxes, postprocess
 from hybridnets.utils.constants import *
 
-from railyard.util.visualization import normalize_tensor
+from railyard.util.categories import lookup_category_list
+from railyard.util.visualization import normalize_tensor, apply_color, overlay_images_batch, draw_bounding_boxes
 
 class HybridNetsBackbone(nn.Module):
     def __init__(self, cfg):
@@ -25,6 +28,7 @@ class HybridNetsBackbone(nn.Module):
         self.num_scales = len(self.anchors_scales)
         self.conf_thres = 0.25
         self.iou_thres = 0.3
+        self.obj_list = lookup_category_list(cfg.DATASETS.TRAIN[0], include_background=False)
 
         self.num_anchors = len(self.anchors_ratios) * self.num_scales
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6, 7]
@@ -156,7 +160,40 @@ class HybridNetsBackbone(nn.Module):
         return out
     
     def visualize(self, batch):
-        vis = {"main_vis": normalize_tensor(batch["img"])}
+        print(batch.keys())
+        img_batch = batch["img"].cpu().detach()
+        seg_batch = batch["segmentation"].cpu().detach()
+        
+        batch_size = img_batch.shape[0]
+        img_batch = normalize_tensor(img_batch)
+
+        seg_color_batch = apply_color(seg_batch)
+        seg_vis_batch = overlay_images_batch(img_batch, seg_color_batch)
+        
+        vis = {
+            "seg_vis": seg_vis_batch,
+        }
+
+        if "detection" in batch:
+            det_batch = batch["detection"]
+            det_vis_batch = []
+            for i in range(batch_size):
+                image = img_batch[i]
+                det = det_batch[i]
+                
+                boxes = det['rois']
+                scores = det['scores']
+                cat_ids = np.array(det["class_ids"], dtype=int)
+                cat_names = [self.obj_list[cat_id] for cat_id in cat_ids]
+                captions = [f'{cat_name}: {score:.2f}' for cat_name, score in zip(cat_names, scores)]
+                colors = apply_color(cat_ids + 1)
+                
+                det_vis = torchvision.transforms.ToPILImage()(image)
+                det_vis = draw_bounding_boxes(det_vis, boxes, captions, colors)
+                det_vis = torchvision.transforms.ToTensor()(det_vis)
+                det_vis_batch.append(det_vis)
+            
+            vis["det_vis"] = det_vis_batch
         return vis
 
     def initialize_decoder(self, module):
