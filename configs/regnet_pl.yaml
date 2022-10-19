@@ -1,7 +1,6 @@
 MODEL:
   BACKBONE:
-    NAME: "efficientnet"
-    COMPOUND_COEF: 3
+    NAME: "regnetx_004"
   DETECTION_HEAD:
     NUM_CLASSES: 10
     ANCHORS_SCALES: (1, 1.52, 2.14)
@@ -15,4 +14,4 @@ DATASETS:
   PREDICT: ("bdd100k",)
 DATALOADER:
   BATCH_SIZE: 8
-OUTPUT_DIR: "./output/hybridnet_pl"
+OUTPUT_DIR: "./output/regnet_pl"
