@@ -14,7 +14,7 @@ from hybridnets.config import Params
 from hybridnets.backbone import HybridNetsBackbone
 
 from railyard.util import read_file, save_file, get_file_names
-from railyard.util.visualization import apply_color, overlay_images_batch, overlay_images
+from railyard.util.visualization import apply_color, overlay_images_batch, overlay_images, draw_bounding_boxes
 
 def normalize_tensor(
     tensor: Union[torch.Tensor, List[torch.Tensor]],
@@ -55,39 +55,6 @@ def normalize_tensor(
     else:
         norm_range(tensor, value_range)
     return tensor
-
-
-def visualize_bbox(img, bbox, label, color=(255,255,255), thickness=1):
-    """Visualizes a single bounding box on the image"""
-    x_min = int(bbox[0])
-    y_min = int(bbox[1])
-    x_max = int(bbox[2])
-    y_max = int(bbox[3])
-    color = tuple(color)
-   
-    cv2.rectangle(img, (x_min, y_min), (x_max, y_max), color=color, thickness=thickness)
-    
-    ((text_width, text_height), _) = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.3, 1)    
-    cv2.rectangle(img, (x_min, y_min - int(1.3 * text_height)), (x_min + text_width, y_min), color, -1)
-    cv2.putText(
-        img,
-        text=label,
-        org=(x_min, y_min - int(0.3 * text_height)),
-        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-        fontScale=0.3, 
-        color=(0, 0, 0), 
-        lineType=cv2.LINE_AA,
-    )
-    return img
-
-def visualize_bboxes(image, bboxes, labels, colors):
-    img = image.copy()
-    bboxes = bboxes[::-1]
-    labels = labels[::-1]
-    colors = colors[::-1]
-    for bbox, label, color in zip(bboxes, labels, colors):
-        img = visualize_bbox(img, bbox, label, color=color)
-    return img
 
 def main(args):
     params = Params(args.config_file)
@@ -134,18 +101,18 @@ def main(args):
                 save_file(seg_vis, os.path.join(output_dir, f"seg_vis/{sample_name}.jpg"))
 
             for i in range(batch_size):
+                image = img_batch[i]
                 det = det_batch[i]
                 
                 boxes = det['rois']
                 scores = det['scores']
                 cat_ids = np.array(det["class_ids"], dtype=int)
                 cat_names = [obj_list[cat_id] for cat_id in cat_ids]
-                colors = apply_color(cat_ids + 1).tolist()
-                labels = [f'{cat_name}: {score:.2f}' for cat_name, score in zip(cat_names, scores)]
-
-                det_vis = np.array(img_batch[i] * 255, dtype=np.uint8).transpose((1,2,0))
-                det_vis = visualize_bboxes(det_vis, boxes, labels, colors=colors)
-                det_vis = torchvision.transforms.ToPILImage()(det_vis)
+                captions = [f'{cat_name}: {score:.2f}' for cat_name, score in zip(cat_names, scores)]
+                colors = apply_color(cat_ids + 1)
+                
+                det_vis = torchvision.transforms.ToPILImage()(image)
+                det_vis = draw_bounding_boxes(det_vis, boxes, captions, colors)
                 save_file(det_vis, os.path.join(output_dir, f"det_vis/{sample_name}.png"))
             
 
