@@ -21,7 +21,7 @@ class HybridNetsBackbone(nn.Module):
         self.anchors_scales = cfg.MODEL.DETECTION_HEAD.ANCHORS_SCALES
         self.anchors_ratios = cfg.MODEL.DETECTION_HEAD.ANCHORS_RATIOS
         self.num_scales = len(self.anchors_scales)
-        self.conf_thres = 0.5
+        self.conf_thres = 0.25
         self.iou_thres = 0.3
 
         self.num_anchors = len(self.anchors_ratios) * self.num_scales

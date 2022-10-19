@@ -12,10 +12,12 @@ from hybridnets.utils import smp_metrics
 from hybridnets.utils.utils import scale_coords, process_batch, ap_per_class, fitness
 from hybridnets.backbone import HybridNetsBackbone
 
+from railyard.util.categories import lookup_category_list
 
 @torch.no_grad()
 def test(model, val_dataloader, cfg):
-    obj_list = ['car']
+    dataset_name = cfg.DATASETS.VAL[0]
+    obj_list = lookup_category_list(dataset_name, include_background=False)
     seg_list = ['road', 'lane']
     seg_mode = "multiclass"
     output_dir = cfg.OUTPUT_DIR

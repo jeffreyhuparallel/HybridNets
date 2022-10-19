@@ -63,9 +63,10 @@ def main(args):
         cfg.merge_from_file(args.config_file)
     print(f"Running with config:\n{cfg}")
 
+    dataset_name = cfg.DATASETS.PREDICT[0]
     output_dir = cfg.OUTPUT_DIR
     
-    obj_list = lookup_category_list("bdd100k", include_background=False)
+    obj_list = lookup_category_list(dataset_name, include_background=False)
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
     image_dir = "demo/image"

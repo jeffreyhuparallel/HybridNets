@@ -15,6 +15,7 @@ from hybridnets.utils.utils import letterbox, augment_hsv, random_perspective, b
 from hybridnets.utils.constants import *
 
 from railyard.util import get_file_names
+from railyard.util.categories import lookup_category_list
 
 
 class BddDataset(Dataset):
@@ -22,17 +23,14 @@ class BddDataset(Dataset):
         self.is_train = is_train
         self.transform = transform
         
+        self.dataset_name = cfg.DATASETS.TRAIN[0]
         self.inputsize = list(cfg.INPUT.SIZE)
-        # self.inputsize = params.model['image_size']
         self.Tensor = transforms.ToTensor()
   
         img_root = "./datasets/imgs"
         label_root = "./datasets/det_annot"
         seg_root = ["./datasets/da_seg_annot", "./datasets/ll_seg_annot"]
         
-        # img_root = Path(params.dataset['dataroot'])
-        # label_root = Path(params.dataset['labelroot'])
-        # seg_root = params.dataset['segroot']
         self.seg_list = ['road', 'lane']
         if is_train:
             indicator = "train"
@@ -41,11 +39,9 @@ class BddDataset(Dataset):
         self.img_root = os.path.join(img_root, indicator)
         self.label_root = os.path.join(label_root, indicator)
         self.label_list = [os.path.join(self.label_root, fn) for fn in get_file_names(self.label_root, ext=".json")]
-        # self.label_list = list(self.label_root.iterdir())
         self.seg_root = []
         for root in seg_root:
             self.seg_root.append(os.path.join(root, indicator))
-            # self.seg_root.append(Path(root) / indicator)
         self.albumentations_transform = A.Compose([
             A.Blur(p=0.01),
             A.MedianBlur(p=0.01),
@@ -57,11 +53,13 @@ class BddDataset(Dataset):
             bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels']),
             additional_targets={'mask0': 'mask'})
         
-
         self.shapes = np.array([720, 1280])
-        self.obj_combine = ['car', 'bus', 'truck', 'train']
-        self.obj_list = ['car']
-        # self.dataset = params.dataset
+        
+        self.obj_list = lookup_category_list(self.dataset_name, include_background=False)
+        self.obj_combine = []
+        if len(self.obj_list) == 1:
+            self.obj_combine = ['car', 'bus', 'truck', 'train']
+        
         self.dataset = { 
             "fliplr": 0.5,
             "flipud": 0.0,

@@ -9,13 +9,13 @@ from torch.utils.tensorboard import SummaryWriter
 from torch import nn
 from tqdm import tqdm
 
-from hybridnets.config import Params
+from hybridnets.config import get_cfg
 from hybridnets.backbone import HybridNetsBackbone
 from hybridnets.data import build_data_loader
 from hybridnets.criterion import build_criterion
 
 @torch.no_grad()
-def val(params, model, criterion, val_dataloader, writer, step):
+def val(model, criterion, val_dataloader, writer, step):
     model.eval()
 
     losses_all = defaultdict(list)
@@ -36,30 +36,36 @@ def val(params, model, criterion, val_dataloader, writer, step):
     model.train()
 
 def main(args):
-    params = Params(args.config_file)
+    cfg = get_cfg()
+    if args.config_file:
+        cfg.merge_from_file(args.config_file)
+    print(f"Running with config:\n{cfg}")
+    
+    output_dir = cfg.OUTPUT_DIR
     epoch = 0
     step = 0
+    lr = cfg.SOLVER.BASE_LR
 
-    checkpoint_dir = params.output_dir + f'/checkpoints/'
-    summary_dir = params.output_dir + f'/tensorboard/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}/'
+    checkpoint_dir = os.path.join(output_dir, 'checkpoints')
+    summary_dir = os.path.join(output_dir, f'tensorboard/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}')
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(summary_dir, exist_ok=True)
 
     writer = SummaryWriter(summary_dir)
 
-    train_dataloader = build_data_loader(params, split="train")
-    val_dataloader = build_data_loader(params, split="val")
+    train_dataloader = build_data_loader(cfg, split="train")
+    val_dataloader = build_data_loader(cfg, split="val")
 
-    criterion = build_criterion(params)
-    model = HybridNetsBackbone(params)
+    criterion = build_criterion(cfg)
+    model = HybridNetsBackbone(cfg)
     if args.ckpt is not None:
         model.load_state_dict(torch.load(args.ckpt))
 
-    optimizer = torch.optim.AdamW(model.parameters(), params.lr)
+    optimizer = torch.optim.AdamW(model.parameters(), lr)
 
     model = model.cuda()
     model.train()
-    for epoch in range(params.num_epochs):
+    for epoch in range(cfg.MAX_EPOCHS):
         for idx, inp in enumerate(tqdm(train_dataloader)):
             for k, v in inp.items():
                 inp[k] = v.cuda() if torch.is_tensor(v) else v
@@ -80,7 +86,7 @@ def main(args):
 
         torch.save(model.state_dict(), os.path.join(checkpoint_dir, f'epoch={epoch}.pth'))
 
-        val(params, model, criterion, val_dataloader, writer=writer, step=step)
+        val(model, criterion, val_dataloader, writer=writer, step=step)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
