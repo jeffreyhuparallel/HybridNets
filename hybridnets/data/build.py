@@ -4,31 +4,31 @@ from torchvision import transforms
 from hybridnets.data.bdd_dataset import BddDataset
 
 
-def build_transform(params, split="train"):
+def build_transform(cfg, split="train"):
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
     transform = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize(
-            mean=params.mean, std=params.std
-        )
+        transforms.Normalize(mean=mean, std=std)
     ])
     return transform
 
-def build_dataset(params, split="train"):
-    transform = build_transform(params, split=split)
+def build_dataset(cfg, split="train"):
+    transform = build_transform(cfg, split=split)
 
     is_train = split == "train"
     dataset = BddDataset(
-        params=params,
+        cfg,
         is_train=is_train,
         transform=transform,
     )
     return dataset
 
-def build_data_loader(params, split="train"):
-    dataset = build_dataset(params, split=split)
+def build_data_loader(cfg, split="train"):
+    dataset = build_dataset(cfg, split=split)
 
-    batch_size = params.batch_size
-    num_workers = params.num_workers
+    batch_size = cfg.DATALOADER.BATCH_SIZE
+    num_workers = cfg.DATALOADER.NUM_WORKERS
     if split == "train":
         shuffle = True
     else:

@@ -1,9 +1,9 @@
+import os
 import cv2
 import numpy as np
 import random
 import torch
 import torchvision.transforms as transforms
-from pathlib import Path
 from torch.utils.data import Dataset
 from tqdm.autonotebook import tqdm
 import json
@@ -14,38 +14,38 @@ import torchshow
 from hybridnets.utils.utils import letterbox, augment_hsv, random_perspective, box_candidates, mixup
 from hybridnets.utils.constants import *
 
+from railyard.util import get_file_names
+
 
 class BddDataset(Dataset):
-    def __init__(self, params, is_train, transform=None):
-        """
-        initial all the characteristic
-
-        Inputs:
-        -params: configuration parameters
-        -is_train(bool): whether train set or not
-        -transform: ToTensor and Normalize
-
-        Returns:
-        None
-        """
+    def __init__(self, cfg, is_train, transform=None):
         self.is_train = is_train
         self.transform = transform
-        self.inputsize = params.model['image_size']
+        
+        self.inputsize = list(cfg.INPUT.SIZE)
+        # self.inputsize = params.model['image_size']
         self.Tensor = transforms.ToTensor()
-        img_root = Path(params.dataset['dataroot'])
-        label_root = Path(params.dataset['labelroot'])
-        seg_root = params.dataset['segroot']
-        self.seg_list = params.seg_list
+  
+        img_root = "./datasets/imgs"
+        label_root = "./datasets/det_annot"
+        seg_root = ["./datasets/da_seg_annot", "./datasets/ll_seg_annot"]
+        
+        # img_root = Path(params.dataset['dataroot'])
+        # label_root = Path(params.dataset['labelroot'])
+        # seg_root = params.dataset['segroot']
+        self.seg_list = ['road', 'lane']
         if is_train:
-            indicator = params.dataset['train_set']
+            indicator = "train"
         else:
-            indicator = params.dataset['test_set']
-        self.img_root = img_root / indicator
-        self.label_root = label_root / indicator
-        self.label_list = list(self.label_root.iterdir())
+            indicator = "val"
+        self.img_root = os.path.join(img_root, indicator)
+        self.label_root = os.path.join(label_root, indicator)
+        self.label_list = [os.path.join(self.label_root, fn) for fn in get_file_names(self.label_root, ext=".json")]
+        # self.label_list = list(self.label_root.iterdir())
         self.seg_root = []
         for root in seg_root:
-            self.seg_root.append(Path(root) / indicator)
+            self.seg_root.append(os.path.join(root, indicator))
+            # self.seg_root.append(Path(root) / indicator)
         self.albumentations_transform = A.Compose([
             A.Blur(p=0.01),
             A.MedianBlur(p=0.01),
@@ -58,13 +58,26 @@ class BddDataset(Dataset):
             additional_targets={'mask0': 'mask'})
         
 
-        self.shapes = np.array(params.dataset['org_img_size'])
-        self.obj_combine = params.obj_combine
-        self.obj_list = params.obj_list
-        self.dataset = params.dataset
-        self.traffic_light_color = params.traffic_light_color
+        self.shapes = np.array([720, 1280])
+        self.obj_combine = ['car', 'bus', 'truck', 'train']
+        self.obj_list = ['car']
+        # self.dataset = params.dataset
+        self.dataset = { 
+            "fliplr": 0.5,
+            "flipud": 0.0,
+            "hsv_h": 0.015,
+            "hsv_s": 0.7,
+            "hsv_v": 0.4,
+            "rot_factor": 10,
+            "scale_factor": 0.25,
+            "shear": 0.0,
+            "translate": 0.1,
+            "mosaic": 0.0,
+            "mixup": 0.0,
+        }
+        self.traffic_light_color = False
         self.mosaic_border = [-1 * self.inputsize[1] // 2, -1 * self.inputsize[0] // 2]
-        self.seg_mode = params.seg_mode
+        self.seg_mode = "multiclass"
         self.db = self._get_db()
 
     def _get_db(self):

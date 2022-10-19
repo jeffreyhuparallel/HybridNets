@@ -6,7 +6,7 @@ import os
 from torchvision import transforms
 import torch.nn.functional as F
 
-from hybridnets.config import Params
+from hybridnets.config import get_cfg
 from hybridnets.data import build_data_loader
 from hybridnets.utils import smp_metrics
 from hybridnets.utils.utils import scale_coords, process_batch, ap_per_class, fitness
@@ -14,20 +14,24 @@ from hybridnets.backbone import HybridNetsBackbone
 
 
 @torch.no_grad()
-def test(model, val_dataloader, params):
+def test(model, val_dataloader, cfg):
+    obj_list = ['car']
+    seg_list = ['road', 'lane']
+    seg_mode = "multiclass"
+    output_dir = cfg.OUTPUT_DIR
     model.eval()
 
     stats, ap, ap_class = [], [], []
     iou_thresholds = torch.linspace(0.5, 0.95, 10).cuda()  # iou vector for mAP@0.5:0.95
     num_thresholds = iou_thresholds.numel()
-    names = {i: v for i, v in enumerate(params.obj_list)}
+    names = {i: v for i, v in enumerate(obj_list)}
     nc = len(names)
-    ncs = len(params.seg_list) + 1
+    ncs = len(seg_list) + 1
     seen = 0
     s_seg = ' ' * (15 + 11 * 8)
     s = ('%-15s' + '%-11s' * 8) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mAcc')
-    for i in range(len(params.seg_list)):
-            s_seg += '%-33s' % params.seg_list[i]
+    for i in range(len(seg_list)):
+            s_seg += '%-33s' % seg_list[i]
             s += ('%-11s' * 3) % ('mIoU', 'IoU', 'Acc')
     p, r, f1, mp, mr, map50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     iou_ls = [[] for _ in range(ncs)]
@@ -75,7 +79,7 @@ def test(model, val_dataloader, params):
                 correct = torch.zeros(pred.shape[0], num_thresholds, dtype=torch.bool)
             stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), target_class))
 
-        tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(seg, seg_annot, mode=params.seg_mode,
+        tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(seg, seg_annot, mode=seg_mode,
                                                                 threshold=None, num_classes=ncs)
         iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
         acc = smp_metrics.balanced_accuracy(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
@@ -91,7 +95,7 @@ def test(model, val_dataloader, params):
     acc_score = np.mean(acc_ls)
 
     miou_ls = []
-    for i in range(len(params.seg_list)):
+    for i in range(len(seg_list)):
         miou_ls.append(np.mean( (iou_ls[0] + iou_ls[i+1]) / 2))
 
     for i in range(ncs):
@@ -104,7 +108,7 @@ def test(model, val_dataloader, params):
 
     # Compute metrics
     if len(stats) and stats[0].any():
-        p, r, f1, ap, ap_class = ap_per_class(*stats, plot=False, save_dir=params.output_dir, names=names)
+        p, r, f1, ap, ap_class = ap_per_class(*stats, plot=False, save_dir=output_dir, names=names)
         ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
         mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
         nt = np.bincount(stats[3].astype(np.int64), minlength=1)  # number of targets per class
@@ -115,7 +119,7 @@ def test(model, val_dataloader, params):
     print(s_seg)
     print(s)
     pf = ('%-15s' + '%-11i' * 2 + '%-11.3g' * 6) % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, acc_score)
-    for i in range(len(params.seg_list)):
+    for i in range(len(seg_list)):
         tmp = i+1
         pf += ('%-11.3g' * 3) % (miou_ls[i], iou_ls[tmp], acc_ls[tmp])
     print(pf)
@@ -129,17 +133,20 @@ def test(model, val_dataloader, params):
     model.train()
 
 def main(args):
-    params = Params(args.config_file)
+    cfg = get_cfg()
+    if args.config_file:
+        cfg.merge_from_file(args.config_file)
+    print(f"Running with config:\n{cfg}")
 
-    model = HybridNetsBackbone(params)
+    model = HybridNetsBackbone(cfg)
     if args.ckpt is not None:
         model.load_state_dict(torch.load(args.ckpt))
     
     model.requires_grad_(False)
     model.cuda()
 
-    val_dataloader = build_data_loader(params, split="val")
-    test(model, val_dataloader, params)
+    val_dataloader = build_data_loader(cfg, split="val")
+    test(model, val_dataloader, cfg)
 
 
 if __name__ == "__main__":
