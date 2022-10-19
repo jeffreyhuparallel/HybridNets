@@ -154,9 +154,9 @@ def postprocess(x, anchors, regression, classification, regressBoxes, clipBoxes,
             boxes_ = transformed_anchors_per[anchors_nms_idx, :]
 
             out.append({
-                'rois': boxes_.cpu().numpy(),
-                'class_ids': classes_.cpu().numpy(),
-                'scores': scores_.cpu().numpy(),
+                'rois': boxes_.cpu().detach().numpy(),
+                'class_ids': classes_.cpu().detach().numpy(),
+                'scores': scores_.cpu().detach().numpy(),
             })
         else:
             out.append({

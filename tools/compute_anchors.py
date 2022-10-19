@@ -1,13 +1,16 @@
 import argparse
 
-from hybridnets.utils.utils import Params
+from hybridnets.config import get_cfg
 from hybridnets.data import build_data_loader
 from hybridnets.autoanchor import run_anchor
 
 def main(args):
-    params = Params(args.config_file)
+    cfg = get_cfg()
+    if args.config_file:
+        cfg.merge_from_file(args.config_file)
+    print(f"Running with config:\n{cfg}")
 
-    train_dataloader = build_data_loader(params, split="train")
+    train_dataloader = build_data_loader(cfg, split="train")
     anchors_scales, anchors_ratios = run_anchor(None, train_dataloader.dataset)
     
 

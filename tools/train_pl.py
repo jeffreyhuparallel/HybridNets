@@ -4,8 +4,8 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from railyard.config import get_cfg
-from railyard.modules import build_module
+from hybridnets.config import get_cfg
+from hybridnets.modules import build_module
 from railyard.util import cli_logo
 
 

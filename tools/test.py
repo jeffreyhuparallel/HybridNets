@@ -10,7 +10,7 @@ from hybridnets.config import get_cfg
 from hybridnets.data import build_data_loader
 from hybridnets.utils import smp_metrics
 from hybridnets.utils.utils import scale_coords, process_batch, ap_per_class, fitness
-from hybridnets.backbone import HybridNetsBackbone
+from hybridnets.modeling import build_model
 
 from railyard.util.categories import lookup_category_list
 
@@ -140,7 +140,7 @@ def main(args):
         cfg.merge_from_file(args.config_file)
     print(f"Running with config:\n{cfg}")
 
-    model = HybridNetsBackbone(cfg)
+    model = build_model(cfg)
     if args.ckpt is not None:
         model.load_state_dict(torch.load(args.ckpt))
     

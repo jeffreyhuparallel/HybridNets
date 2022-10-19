@@ -11,7 +11,7 @@ import argparse
 from tqdm import tqdm
 
 from hybridnets.config import get_cfg
-from hybridnets.backbone import HybridNetsBackbone
+from hybridnets.modeling import build_model
 
 from railyard.util import read_file, save_file, get_file_names
 from railyard.util.categories import lookup_category_list
@@ -81,7 +81,7 @@ def main(args):
         transforms.Normalize(mean=mean, std=std),
     ])
     
-    model = HybridNetsBackbone(cfg)
+    model = build_model(cfg)
     model.load_state_dict(torch.load(args.ckpt, map_location='cuda'))
 
     model.requires_grad_(False)

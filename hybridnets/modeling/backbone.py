@@ -3,8 +3,8 @@ from torch import nn
 import timm
 
 from hybridnets.encoders import get_encoder
-from hybridnets.model import BiFPN, Regressor, Classifier, BiFPNDecoder
-from hybridnets.model import SegmentationHead
+from hybridnets.modeling.model import BiFPN, Regressor, Classifier, BiFPNDecoder
+from hybridnets.modeling.model import SegmentationHead
 from hybridnets.utils.utils import Anchors, init_weights
 from hybridnets.utils.utils import BBoxTransform, ClipBoxes, postprocess
 from hybridnets.utils.constants import *
@@ -121,6 +121,7 @@ class HybridNetsBackbone(nn.Module):
         anchors = self.anchors(x, x.dtype)
         
         target = {
+            "img": x,
             "features": features,
             "regression": regression,
             "classification": classification,
@@ -129,8 +130,8 @@ class HybridNetsBackbone(nn.Module):
         }
         return target
     
-    def postprocess(self, inp, target):
-        image = inp["img"]
+    def postprocess(self, target):
+        image = target["img"]
         features = target["features"]
         regression = target["regression"]
         classification = target["classification"]
@@ -151,6 +152,10 @@ class HybridNetsBackbone(nn.Module):
             "detection": detection,
         }
         return out
+    
+    def visualize(self, batch):
+        vis = {}
+        return vis
 
     def initialize_decoder(self, module):
         for m in module.modules():

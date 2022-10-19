@@ -10,7 +10,7 @@ from torch import nn
 from tqdm import tqdm
 
 from hybridnets.config import get_cfg
-from hybridnets.backbone import HybridNetsBackbone
+from hybridnets.modeling import build_model
 from hybridnets.data import build_data_loader
 from hybridnets.criterion import build_criterion
 
@@ -57,7 +57,7 @@ def main(args):
     val_dataloader = build_data_loader(cfg, split="val")
 
     criterion = build_criterion(cfg)
-    model = HybridNetsBackbone(cfg)
+    model = build_model(cfg)
     if args.ckpt is not None:
         model.load_state_dict(torch.load(args.ckpt))
 
