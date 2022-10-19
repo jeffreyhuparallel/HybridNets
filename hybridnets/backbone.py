@@ -10,17 +10,19 @@ from hybridnets.utils.utils import BBoxTransform, ClipBoxes, postprocess
 from hybridnets.utils.constants import *
 
 class HybridNetsBackbone(nn.Module):
-    def __init__(self, params):
+    def __init__(self, cfg):
         super().__init__()
-        self.params = params
-        self.compound_coef = params.compound_coef
-        self.num_classes = len(params.obj_list)
-        self.seg_classes = len(params.seg_list)
-        self.seg_mode = params.seg_mode
-        self.backbone_name = params.backbone_name
-        self.anchors_scales = eval(params.anchors_scales)
-        self.anchors_ratios = eval(params.anchors_ratios)
+        self.cfg = cfg
+        self.backbone_name = cfg.MODEL.BACKBONE.NAME
+        self.compound_coef = cfg.MODEL.BACKBONE.COMPOUND_COEF
+        self.seg_classes = 2
+        self.seg_mode = "multiclass"
+        self.num_classes = cfg.MODEL.DETECTION_HEAD.NUM_CLASSES
+        self.anchors_scales = cfg.MODEL.DETECTION_HEAD.ANCHORS_SCALES
+        self.anchors_ratios = cfg.MODEL.DETECTION_HEAD.ANCHORS_RATIOS
         self.num_scales = len(self.anchors_scales)
+        self.conf_thres = 0.5
+        self.iou_thres = 0.3
 
         self.num_anchors = len(self.anchors_ratios) * self.num_scales
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6, 7]
@@ -142,7 +144,7 @@ class HybridNetsBackbone(nn.Module):
         detection = postprocess(image,
                         anchors, regression, classification,
                         regressBoxes, clipBoxes,
-                        self.params.conf_thres, self.params.iou_thres)
+                        self.conf_thres, self.iou_thres)
         
         out = {
             "segmentation": seg,

@@ -10,10 +10,11 @@ from torchvision import transforms
 import argparse
 from tqdm import tqdm
 
-from hybridnets.config import Params
+from hybridnets.config import get_cfg
 from hybridnets.backbone import HybridNetsBackbone
 
 from railyard.util import read_file, save_file, get_file_names
+from railyard.util.categories import lookup_category_list
 from railyard.util.visualization import apply_color, overlay_images_batch, overlay_images, draw_bounding_boxes
 
 def normalize_tensor(
@@ -57,9 +58,16 @@ def normalize_tensor(
     return tensor
 
 def main(args):
-    params = Params(args.config_file)
-    obj_list = params.obj_list
-    output_dir = os.path.join(params.output_dir, "demo")
+    cfg = get_cfg()
+    if args.config_file:
+        cfg.merge_from_file(args.config_file)
+    print(f"Running with config:\n{cfg}")
+
+    output_dir = cfg.OUTPUT_DIR
+    
+    obj_list = lookup_category_list("bdd100k", include_background=False)
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
     image_dir = "demo/image"
     batch_size = 1
     
@@ -69,10 +77,10 @@ def main(args):
     transform = transforms.Compose([
         transforms.Resize((384, 640)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=params.mean, std=params.std),
+        transforms.Normalize(mean=mean, std=std),
     ])
     
-    model = HybridNetsBackbone(params)
+    model = HybridNetsBackbone(cfg)
     model.load_state_dict(torch.load(args.ckpt, map_location='cuda'))
 
     model.requires_grad_(False)
@@ -98,7 +106,7 @@ def main(args):
             seg_vis_batch = overlay_images_batch(img_batch, seg_color_batch)
             for i in range(batch_size):
                 seg_vis = torchvision.transforms.ToPILImage()(seg_vis_batch[i])
-                save_file(seg_vis, os.path.join(output_dir, f"seg_vis/{sample_name}.jpg"))
+                save_file(seg_vis, os.path.join(output_dir, f"demo/seg_vis/{sample_name}.jpg"))
 
             for i in range(batch_size):
                 image = img_batch[i]
@@ -113,7 +121,7 @@ def main(args):
                 
                 det_vis = torchvision.transforms.ToPILImage()(image)
                 det_vis = draw_bounding_boxes(det_vis, boxes, captions, colors)
-                save_file(det_vis, os.path.join(output_dir, f"det_vis/{sample_name}.png"))
+                save_file(det_vis, os.path.join(output_dir, f"demo/det_vis/{sample_name}.png"))
             
 
 if __name__ == "__main__":

@@ -100,36 +100,12 @@ class BddDataset(Dataset):
                 box = self.convert((width, height), (x1, x2, y1, y2))
                 gt[idx][1:] = list(box)
 
-            # img = cv2.imread(image_path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
-            # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
             rec = {
-                # 'image': img,
                 'image': image_path,
                 'label': gt,
             }
             # Since seg_path is a dynamic dict
             rec = {**rec, **seg_path}
-
-            # img = cv2.imread(image_path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION | cv2.IMREAD_UNCHANGED)
-            # # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            # for label in gt:
-            #     # print(label[1])
-            #     x1 = label[1] - label[3] / 2
-            #     x1 *= 1280
-            #     x1 = int(x1)
-            #     # print(x1)
-            #     x2 = label[1] + label[3] / 2
-            #     x2 *= 1280
-            #     x2 = int(x2)
-            #     y1 = label[2] - label[4] / 2
-            #     y1 *= 720
-            #     y1 = int(y1)
-            #     y2 = label[2] + label[4] / 2
-            #     y2 *= 720
-            #     y2 = int(y2)
-            #     img = cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            # cv2.imwrite('gt/{}'.format(image_path.split('/')[-1]), img)
 
             gt_db.append(rec)
         print('database build finish')
@@ -181,15 +157,8 @@ class BddDataset(Dataset):
             labels[:, 3] = (det_label[:, 1] + det_label[:, 3] / 2) * w
             labels[:, 4] = (det_label[:, 2] + det_label[:, 4] / 2) * h
 
-#         img_clone = img.copy()
-#         for anno in labels:
-#           x1,y1,x2,y2 = [int(x) for x in anno[1:5]]
-#           img_clone = cv2.rectangle(img_clone, (x1,y1), (x2,y2), (255,0,0), 1)
-#         cv2.imwrite("label-{}.jpg".format(index), img_clone)
-
         for seg_class in seg_label:
             _, seg_label[seg_class] = cv2.threshold(seg_label[seg_class], 0, 255, cv2.THRESH_BINARY)
-        # np.savetxt('seglabelroad_before', seg_label['road'])
     
         return img, labels, seg_label, (h0, w0), (h,w), None # data['image']
 

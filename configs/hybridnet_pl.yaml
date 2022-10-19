@@ -1,0 +1,15 @@
+MODEL:
+  BACKBONE:
+    NAME: "efficientnet"
+  DETECTION_HEAD:
+    NUM_CLASSES: 10
+INPUT:
+  SIZE: (640, 384)
+DATASETS:
+  TRAIN: ("bdd100k",)
+  VAL: ("bdd100k",)
+  TEST: ("bdd100k",)
+  PREDICT: ("bdd100k",)
+DATALOADER:
+  BATCH_SIZE: 8
+OUTPUT_DIR: "./output/hybridnet_pl"
