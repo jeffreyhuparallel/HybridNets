@@ -20,7 +20,7 @@ class CriterionCompose(pl.LightningModule):
 
 
 class DetectionLoss(pl.LightningModule):
-    def __init__(self, params):
+    def __init__(self, cfg):
         super().__init__()
         self.det_criterion = FocalLoss()
     
@@ -40,10 +40,10 @@ class DetectionLoss(pl.LightningModule):
         return losses
 
 class SegmentationLoss(pl.LightningModule):
-    def __init__(self, params):
+    def __init__(self, cfg):
         super().__init__()
-        self.seg_criterion1 = TverskyLoss(mode=params.seg_mode, alpha=0.7, beta=0.3, gamma=4.0/3, from_logits=True)
-        self.seg_criterion2 = FocalLossSeg(mode=params.seg_mode, alpha=0.25)
+        self.seg_criterion1 = TverskyLoss(alpha=0.7, beta=0.3, gamma=4.0/3, from_logits=True)
+        self.seg_criterion2 = FocalLossSeg(alpha=0.25)
     
     def __call__(self, inp, target):
         seg_annot = inp['segmentation']
@@ -58,10 +58,10 @@ class SegmentationLoss(pl.LightningModule):
         return losses
         
         
-def build_criterion(params):
+def build_criterion(cfg):
     criterions = [
-        DetectionLoss(params),
-        SegmentationLoss(params),
+        DetectionLoss(cfg),
+        SegmentationLoss(cfg),
     ]
     weights = [1, 1]
     

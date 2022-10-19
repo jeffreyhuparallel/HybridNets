@@ -279,7 +279,6 @@ def focal_loss_with_logits(
 class FocalLossSeg(_Loss):
     def __init__(
         self,
-        mode: str,
         alpha: Optional[float] = None,
         gamma: Optional[float] = 2.0,
         ignore_index: Optional[int] = None,
@@ -290,7 +289,6 @@ class FocalLossSeg(_Loss):
         """Compute Focal loss
 
         Args:
-            mode: Loss mode 'binary', 'multiclass' or 'multilabel'
             alpha: Prior probability of having positive value in target.
             gamma: Power factor for dampening weight (focal strength).
             ignore_index: If not None, targets may contain values to be ignored.
@@ -307,10 +305,9 @@ class FocalLossSeg(_Loss):
             https://github.com/BloodAxe/pytorch-toolbelt
 
         """
-        assert mode in {BINARY_MODE, MULTILABEL_MODE, MULTICLASS_MODE}
         super().__init__()
 
-        self.mode = mode
+        self.mode = "multiclass"
         self.ignore_index = ignore_index
         self.focal_loss_fn = partial(
             focal_loss_with_logits,
@@ -399,7 +396,6 @@ def soft_dice_score(
 class DiceLoss(_Loss):
     def __init__(
         self,
-        mode: str,
         classes: Optional[List[int]] = None,
         log_loss: bool = False,
         from_logits: bool = True,
@@ -411,7 +407,6 @@ class DiceLoss(_Loss):
         It supports binary, multiclass and multilabel cases
 
         Args:
-            mode: Loss mode 'binary', 'multiclass' or 'multilabel'
             classes:  List of classes that contribute in loss computation. By default, all channels are included.
             log_loss: If True, loss computed as `- log(dice_coeff)`, otherwise `1 - dice_coeff`
             from_logits: If True, assumes input is raw logits
@@ -427,11 +422,9 @@ class DiceLoss(_Loss):
         Reference
             https://github.com/BloodAxe/pytorch-toolbelt
         """
-        assert mode in {BINARY_MODE, MULTILABEL_MODE, MULTICLASS_MODE}
         super(DiceLoss, self).__init__()
-        self.mode = mode
+        self.mode = "multiclass"
         if classes is not None:
-            assert mode != BINARY_MODE, "Masking classes is not supported with mode=binary"
             classes = to_tensor(classes, dtype=torch.long)
 
         self.classes = classes
@@ -546,7 +539,6 @@ class TverskyLoss(DiceLoss):
     It supports binary, multiclass and multilabel cases
 
     Args:
-        mode: Metric mode {'binary', 'multiclass', 'multilabel'}
         classes: Optional list of classes that contribute in loss computation;
         By default, all channels are included.
         log_loss: If True, loss computed as ``-log(tversky)`` otherwise ``1 - tversky``
@@ -565,7 +557,6 @@ class TverskyLoss(DiceLoss):
 
     def __init__(
         self,
-        mode: str,
         classes: List[int] = None,
         log_loss: bool = False,
         from_logits: bool = True,
@@ -576,9 +567,7 @@ class TverskyLoss(DiceLoss):
         beta: float = 0.5,
         gamma: float = 1.0
     ):
-
-        assert mode in {BINARY_MODE, MULTILABEL_MODE, MULTICLASS_MODE}
-        super().__init__(mode, classes, log_loss, from_logits, smooth, ignore_index, eps)
+        super().__init__(classes, log_loss, from_logits, smooth, ignore_index, eps)
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
