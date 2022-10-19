@@ -4,6 +4,7 @@ import numpy as np
 import random
 import torch
 import torchvision.transforms as transforms
+from PIL import Image
 from torch.utils.data import Dataset
 from tqdm.autonotebook import tqdm
 import json
@@ -431,7 +432,7 @@ class BddDataset(Dataset):
             #            [0, 0, 0, 0]      [0, 1, 1, 0]        [1, 0, 0, 1]
             #            [0, 0, 0, 0]      [0, 1, 1, 0]        [1, 0, 0, 1]
             #            [0, 0, 0, 0]      [1, 1, 1, 1]        [1, 0, 0, 1]
-
+        img = Image.fromarray(img)
         img = self.transform(img)
 
         return img, path, shapes, torch.from_numpy(labels_app), segmentation.long()

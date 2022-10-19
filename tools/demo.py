@@ -1,4 +1,3 @@
-from typing import Union, List, Optional, Tuple
 import time
 import torch
 import torchvision
@@ -11,51 +10,12 @@ import argparse
 from tqdm import tqdm
 
 from hybridnets.config import get_cfg
+from hybridnets.data import build_transform
 from hybridnets.modeling import build_model
 
 from railyard.util import read_file, save_file, get_file_names
 from railyard.util.categories import lookup_category_list
-from railyard.util.visualization import apply_color, overlay_images_batch, overlay_images, draw_bounding_boxes
-
-def normalize_tensor(
-    tensor: Union[torch.Tensor, List[torch.Tensor]],
-    value_range: Optional[Tuple[int, int]] = None,
-    scale_each: bool = True,
-) -> torch.Tensor:
-    """
-    Normalize a tensor of images by shifting images to the range (0, 1), 
-    by the min and max values specified by ``value_range``.
-    Args:
-        tensor (Tensor or list): 4D mini-batch Tensor of shape (B x C x H x W)
-            or a list of images all of the same size.
-        value_range (tuple, optional): tuple (min, max) where min and max are numbers,
-            then these numbers are used to normalize the image. By default, min and max
-            are computed from the tensor.
-        scale_each (bool, optional): If ``True``, scale each image in the batch of
-            images separately rather than the (min, max) over all images. Default: ``True``.
-    Returns:
-        grid (Tensor): the tensor containing normalized images.
-    """
-    tensor = tensor.clone()  # avoid modifying tensor in-place
-    if value_range is not None and not isinstance(value_range, tuple):
-        raise TypeError("value_range has to be a tuple (min, max) if specified. min and max are numbers")
-
-    def norm_ip(img, low, high):
-        img.clamp_(min=low, max=high)
-        img.sub_(low).div_(max(high - low, 1e-5))
-
-    def norm_range(t, value_range):
-        if value_range is not None:
-            norm_ip(t, value_range[0], value_range[1])
-        else:
-            norm_ip(t, float(t.min()), float(t.max()))
-
-    if scale_each is True:
-        for t in tensor:  # loop over mini-batch dimension
-            norm_range(t, value_range)
-    else:
-        norm_range(tensor, value_range)
-    return tensor
+from railyard.util.visualization import apply_color, overlay_images_batch, overlay_images, draw_bounding_boxes, normalize_tensor
 
 def main(args):
     cfg = get_cfg()
@@ -66,20 +26,13 @@ def main(args):
     dataset_name = cfg.DATASETS.PREDICT[0]
     output_dir = cfg.OUTPUT_DIR
     
-    obj_list = lookup_category_list(dataset_name, include_background=False)
-    mean = [0.485, 0.456, 0.406]
-    std = [0.229, 0.224, 0.225]
-    image_dir = "demo/image"
     batch_size = 1
+    obj_list = lookup_category_list(dataset_name, include_background=False)
     
+    image_dir = "demo/image"
     file_names = get_file_names(image_dir, ext=".jpg")
     sample_names = [os.path.splitext(fn)[0] for fn in file_names]
-    
-    transform = transforms.Compose([
-        transforms.Resize((384, 640)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=mean, std=std),
-    ])
+    transform = build_transform(cfg, split="predict")
     
     model = build_model(cfg)
     model.load_state_dict(torch.load(args.ckpt, map_location='cuda'))
@@ -97,7 +50,7 @@ def main(args):
             inp = {"img": x}
             
             target = model(inp)
-            out = model.postprocess(inp, target)
+            out = model.postprocess(target)
             
             img_batch = normalize_tensor(inp["img"]).cpu().detach()
             seg_batch = out["segmentation"].cpu().detach()

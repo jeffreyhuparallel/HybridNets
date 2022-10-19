@@ -29,7 +29,7 @@ class HydraModule(pl.LightningModule):
         self.learning_rate = cfg.SOLVER.BASE_LR
         self.output_dir = cfg.OUTPUT_DIR
 
-        self.net = build_model(cfg)
+        self.net = build_model(cfg, pretrained=True)
         self.criterion = build_criterion(cfg)
         # self.evaluator = build_evaluator(cfg)
 

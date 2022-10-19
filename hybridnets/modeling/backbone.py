@@ -9,6 +9,8 @@ from hybridnets.utils.utils import Anchors, init_weights
 from hybridnets.utils.utils import BBoxTransform, ClipBoxes, postprocess
 from hybridnets.utils.constants import *
 
+from railyard.util.visualization import normalize_tensor
+
 class HybridNetsBackbone(nn.Module):
     def __init__(self, cfg):
         super().__init__()
@@ -154,7 +156,7 @@ class HybridNetsBackbone(nn.Module):
         return out
     
     def visualize(self, batch):
-        vis = {}
+        vis = {"main_vis": normalize_tensor(batch["img"])}
         return vis
 
     def initialize_decoder(self, module):
