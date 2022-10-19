@@ -343,32 +343,6 @@ class BddDataset(Dataset):
             labels_app[:, 4] = labels[:, 0]
 
         img = np.ascontiguousarray(img)
-
-        # print(img.shape)
-        # img_copy = img.copy()
-        # np.savetxt('seglabelroad', seg_label['road'])
-        # print(np.count_nonzero(seg_label['road']))
-        # print(np.count_nonzero(seg_label['road'][seg_label['road']==114]))
-        # img_copy[seg_label['road'] == 255] = (0, 255, 0)
-        # if seg_label['road'][np.logical_and(seg_label['road'] > 0, seg_label['road'] < 255)].any():
-        #     print(np.count_nonzero(seg_label['road'][np.logical_and(seg_label['road'] > 0, seg_label['road'] < 255)]))
-        #     print(seg_label['road'][seg_label['road'][np.logical_and(seg_label['road'] > 0, seg_label['road'] < 255)]])
-        # img_copy[seg_label['lane'] == 255] = (0, 0, 255)
-        # union = np.zeros(img.shape[:2], dtype=np.uint8)
-        # for seg_class in seg_label:
-        #     union |= seg_label[seg_class]
-        # background = 255 - union
-        # cv2.imwrite('_copy.jpg', img_copy)
-        # cv2.imwrite('_seg_road.jpg', seg_label['road'])
-        # cv2.imwrite('_seg_lane.jpg', seg_label['lane'])
-        # cv2.imwrite('_background.jpg', background)
-
-        # for anno in labels_app:
-        #     print(anno)
-        #     x1, y1, x2, y2 = [int(x) for x in anno[anno != -1][:4]]
-        #     cv2.rectangle(img_copy, (x1,y1), (x2,y2), (0,0,255), 1)
-        # cv2.imwrite('_box.jpg', img_copy)
-        # exit()
         
         if self.seg_mode == BINARY_MODE:
             for seg_class in seg_label:
@@ -475,8 +449,6 @@ class BddDataset(Dataset):
     @staticmethod
     def collate_fn(batch):
         img, paths, shapes, labels_app, segmentation = zip(*batch)
-        # filenames = [file.split('/')[-1] for file in paths]
-        # print(len(labels_app))
         max_num_annots = max(label.size(0) for label in labels_app)
 
         if max_num_annots > 0:
@@ -487,6 +459,5 @@ class BddDataset(Dataset):
         else:
             annot_padded = torch.ones((len(labels_app), 1, 5)) * -1
 
-        # print("ABC", seg1.size())
         return {'img': torch.stack(img, 0), 'annot': annot_padded, 'segmentation': torch.stack(segmentation, 0),
-                'filenames': None, 'shapes': shapes}
+                'shapes': shapes}

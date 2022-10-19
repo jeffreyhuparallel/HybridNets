@@ -44,7 +44,7 @@ def test(model, val_dataloader, cfg):
             inp[k] = v.cuda() if torch.is_tensor(v) else v
 
         target = model(inp)
-        out = model.postprocess(inp, target)
+        out = model.postprocess(target)
         
         imgs = inp['img']
         annot = inp['annot']
