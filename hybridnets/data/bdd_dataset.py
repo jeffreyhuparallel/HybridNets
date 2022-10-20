@@ -459,5 +459,5 @@ class BddDataset(Dataset):
         else:
             annot_padded = torch.ones((len(labels_app), 1, 5)) * -1
 
-        return {'img': torch.stack(img, 0), 'annot': annot_padded, 'segmentation': torch.stack(segmentation, 0),
+        return {'image': torch.stack(img, 0), 'annot': annot_padded, 'segmentation': torch.stack(segmentation, 0),
                 'shapes': shapes}

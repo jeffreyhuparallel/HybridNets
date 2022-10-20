@@ -112,7 +112,7 @@ class HybridNetsBackbone(nn.Module):
                 m.eval()
 
     def forward(self, inp):
-        x = inp['img']
+        x = inp['image']
         
         p2, p3, p4, p5 = self.encoder(x)[-4:]
 
@@ -128,7 +128,7 @@ class HybridNetsBackbone(nn.Module):
         anchors = self.anchors(x, x.dtype)
         
         target = {
-            "img": x,
+            "image": x,
             "features": features,
             "regression": regression,
             "classification": classification,
@@ -138,7 +138,7 @@ class HybridNetsBackbone(nn.Module):
         return target
     
     def postprocess(self, target):
-        image = target["img"]
+        image = target["image"]
         features = target["features"]
         regression = target["regression"]
         classification = target["classification"]
@@ -167,6 +167,7 @@ class HybridNetsBackbone(nn.Module):
         
         out = {
             "segmentation": seg,
+            "detection": det,
             "detection_boxes": detection_boxes,
             "detection_scores": detection_scores,
             "detection_labels": detection_labels,
@@ -174,7 +175,7 @@ class HybridNetsBackbone(nn.Module):
         return out
     
     def visualize(self, batch):
-        main_vis = batch["img"].cpu().detach()
+        main_vis = batch["image"].cpu().detach()
         main_vis = normalize_tensor(main_vis)
         vis = {
             "main_vis": main_vis,

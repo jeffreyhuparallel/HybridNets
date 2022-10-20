@@ -46,7 +46,7 @@ def test(model, val_dataloader, cfg):
         target = model(inp)
         out = model.postprocess(target)
         
-        imgs = inp['img']
+        imgs = inp['image']
         annot = inp['annot']
         seg_annot = inp['segmentation']
         shapes = inp['shapes']

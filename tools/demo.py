@@ -47,7 +47,7 @@ def main(args):
             x = transform(image)
             x = torch.unsqueeze(x, dim=0)
             x = x.to(torch.float32).cuda()
-            inp = {"img": x}
+            inp = {"image": x}
             
             target = model(inp)
             out = model.postprocess(target)
