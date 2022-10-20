@@ -10,7 +10,7 @@ from PIL import Image
 
 from ..criterion import build_criterion
 from ..data import build_data_loader
-# from ..evaluation import build_evaluator
+from railyard.evaluation import build_evaluator
 from ..modeling import build_model
 from railyard.util import save_file
 
@@ -31,7 +31,7 @@ class HydraModule(pl.LightningModule):
 
         self.net = build_model(cfg, pretrained=True)
         self.criterion = build_criterion(cfg)
-        # self.evaluator = build_evaluator(cfg)
+        self.evaluator = build_evaluator(cfg)
 
     def forward(self, x):
         return self.net(x)
