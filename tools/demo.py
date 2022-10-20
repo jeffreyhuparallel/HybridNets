@@ -51,31 +51,12 @@ def main(args):
             
             target = model(inp)
             out = model.postprocess(target)
+            out.update({k: v for k, v in inp.items() if k not in out})
+            vis = model.visualize(out)
             
-            img_batch = normalize_tensor(inp["img"]).cpu().detach()
-            seg_batch = out["segmentation"].cpu().detach()
-            det_batch = out["detection"]
-
-            seg_color_batch = apply_color(seg_batch)
-            seg_vis_batch = overlay_images_batch(img_batch, seg_color_batch)
-            for i in range(batch_size):
-                seg_vis = torchvision.transforms.ToPILImage()(seg_vis_batch[i])
-                save_file(seg_vis, os.path.join(output_dir, f"demo/seg_vis/{sample_name}.jpg"))
-
-            for i in range(batch_size):
-                image = img_batch[i]
-                det = det_batch[i]
-                
-                boxes = det['rois']
-                scores = det['scores']
-                cat_ids = np.array(det["class_ids"], dtype=int)
-                cat_names = [obj_list[cat_id] for cat_id in cat_ids]
-                captions = [f'{cat_name}: {score:.2f}' for cat_name, score in zip(cat_names, scores)]
-                colors = apply_color(cat_ids + 1)
-                
-                det_vis = torchvision.transforms.ToPILImage()(image)
-                det_vis = draw_bounding_boxes(det_vis, boxes, captions, colors)
-                save_file(det_vis, os.path.join(output_dir, f"demo/det_vis/{sample_name}.png"))
+            for k, v in vis.items():
+                image = torchvision.transforms.ToPILImage()(v[0])
+                save_file(image, os.path.join(output_dir, f"demo/{k}/{sample_name}.jpg"))
             
 
 if __name__ == "__main__":

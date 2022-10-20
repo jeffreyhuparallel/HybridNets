@@ -28,7 +28,8 @@ class HybridNetsBackbone(nn.Module):
         self.num_scales = len(self.anchors_scales)
         self.conf_thres = 0.25
         self.iou_thres = 0.3
-        self.obj_list = lookup_category_list(cfg.DATASETS.TRAIN[0], include_background=False)
+        self.vis_threshold = 0.25
+        self.categories = lookup_category_list(cfg.DATASETS.TRAIN[0], include_background=False)
 
         self.num_anchors = len(self.anchors_ratios) * self.num_scales
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6, 7]
@@ -148,53 +149,82 @@ class HybridNetsBackbone(nn.Module):
         
         regressBoxes = BBoxTransform()
         clipBoxes = ClipBoxes()
-        detection = postprocess(image,
+        det = postprocess(image,
                         anchors, regression, classification,
                         regressBoxes, clipBoxes,
                         self.conf_thres, self.iou_thres)
         
+        detection_boxes = []
+        detection_scores = []
+        detection_labels = []
+        for d in det:
+            boxes = torch.from_numpy(d['rois'])
+            scores = torch.from_numpy(d['scores'])
+            labels = torch.from_numpy(d['class_ids'])
+            detection_boxes.append(boxes)
+            detection_scores.append(scores)
+            detection_labels.append(labels)
+        
         out = {
             "segmentation": seg,
-            "detection": detection,
+            "detection_boxes": detection_boxes,
+            "detection_scores": detection_scores,
+            "detection_labels": detection_labels,
         }
         return out
     
     def visualize(self, batch):
-        print(batch.keys())
-        img_batch = batch["img"].cpu().detach()
-        seg_batch = batch["segmentation"].cpu().detach()
-        
-        batch_size = img_batch.shape[0]
-        img_batch = normalize_tensor(img_batch)
-
-        seg_color_batch = apply_color(seg_batch)
-        seg_vis_batch = overlay_images_batch(img_batch, seg_color_batch)
-        
+        main_vis = batch["img"].cpu().detach()
+        main_vis = normalize_tensor(main_vis)
         vis = {
-            "seg_vis": seg_vis_batch,
+            "main_vis": main_vis,
         }
-
-        if "detection" in batch:
-            det_batch = batch["detection"]
-            det_vis_batch = []
-            for i in range(batch_size):
-                image = img_batch[i]
-                det = det_batch[i]
-                
-                boxes = det['rois']
-                scores = det['scores']
-                cat_ids = np.array(det["class_ids"], dtype=int)
-                cat_names = [self.obj_list[cat_id] for cat_id in cat_ids]
-                captions = [f'{cat_name}: {score:.2f}' for cat_name, score in zip(cat_names, scores)]
-                colors = apply_color(cat_ids + 1)
-                
-                det_vis = torchvision.transforms.ToPILImage()(image)
-                det_vis = draw_bounding_boxes(det_vis, boxes, captions, colors)
-                det_vis = torchvision.transforms.ToTensor()(det_vis)
-                det_vis_batch.append(det_vis)
-            
-            vis["det_vis"] = det_vis_batch
+        
+        self.visualize_seg(batch, vis)
+        if "detection_boxes" in batch:
+            self.visualize_det(batch, vis)
         return vis
+
+    def visualize_seg(self, batch, vis) -> None:
+        seg_batch = batch["segmentation"].cpu().detach().numpy()
+
+        images = []
+        for seg in seg_batch:
+            seg_color = apply_color(seg)
+            seg_color = torch.from_numpy(np.array(seg_color).transpose((2, 0, 1)))
+            images.append(seg_color)
+        images = torch.stack(images, dim=0)
+
+        vis["segmentation_vis"] = images
+
+    def visualize_det(self, batch, vis) -> None:
+        image_batch = vis["main_vis"]
+        boxes_all = batch["detection_boxes"]
+        labels_all = batch["detection_labels"]
+        scores_all = batch["detection_scores"]
+
+        images = []
+        for image, boxes, labels, scores in zip(
+            image_batch, boxes_all, labels_all, scores_all
+        ):
+            boxes = boxes.cpu().detach().numpy()
+            labels = labels.cpu().detach().numpy().astype(int)
+            scores = scores.cpu().detach().numpy()
+
+            boxes = boxes[scores > self.vis_threshold]
+            labels = labels[scores > self.vis_threshold]
+            scores = scores[scores > self.vis_threshold]
+
+            cat_names = [self.categories[int(l)] for l in labels]
+            captions = [f"{c} {s:.2f}" for c, s in zip(cat_names, scores)]
+            colors = apply_color(labels)
+
+            image = torchvision.transforms.ToPILImage()(image)
+            image = draw_bounding_boxes(image, boxes, captions, colors)
+            image = torchvision.transforms.ToTensor()(image)
+            images.append(image)
+
+        vis["main_vis"] = images
 
     def initialize_decoder(self, module):
         for m in module.modules():
