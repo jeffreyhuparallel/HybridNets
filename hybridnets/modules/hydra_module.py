@@ -29,7 +29,7 @@ class HydraModule(pl.LightningModule):
         self.learning_rate = cfg.SOLVER.BASE_LR
         self.output_dir = cfg.OUTPUT_DIR
 
-        self.net = build_model(cfg, pretrained=False)
+        self.net = build_model(cfg)
         self.criterion = build_criterion(cfg)
         self.evaluator = build_evaluator(cfg)
 
@@ -68,9 +68,7 @@ class HydraModule(pl.LightningModule):
 
     def on_test_epoch_end(self):
         metrics, metrics_vis = self.evaluator.compute()
-        metrics = {k: v.cpu().detach().numpy().tolist() for k, v in metrics.items()}
         save_file(metrics, os.path.join(self.output_dir, "metrics.json"))
-        print(metrics)
 
     def predict_step(self, inp, batch_idx):
         target = self(inp)

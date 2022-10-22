@@ -3,6 +3,7 @@ import torch
 from torch import nn
 import timm
 import torchvision
+import pytorch_lightning as pl
 
 from hybridnets.encoders import get_encoder
 from hybridnets.modeling.model import BiFPN, Regressor, Classifier, BiFPNDecoder
@@ -14,7 +15,7 @@ from hybridnets.utils.constants import *
 from railyard.util.categories import lookup_category_list
 from railyard.util.visualization import normalize_tensor, apply_color, overlay_images_batch, draw_bounding_boxes
 
-class HybridNetsBackbone(nn.Module):
+class HybridNetsBackbone(pl.LightningModule):
     def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg
@@ -158,9 +159,9 @@ class HybridNetsBackbone(nn.Module):
         detection_scores = []
         detection_labels = []
         for d in det:
-            boxes = torch.from_numpy(d['rois'])
-            scores = torch.from_numpy(d['scores'])
-            labels = torch.from_numpy(d['class_ids'])
+            boxes = torch.from_numpy(d['rois']).to(self.device)
+            scores = torch.from_numpy(d['scores']).to(self.device)
+            labels = torch.from_numpy(d['class_ids']).to(self.device)
             detection_boxes.append(boxes)
             detection_scores.append(scores)
             detection_labels.append(labels)

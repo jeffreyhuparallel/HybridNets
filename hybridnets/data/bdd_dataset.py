@@ -130,7 +130,7 @@ class BddDataset(Dataset):
         """
         raise NotImplementedError
 
-    def __len__(self, ):
+    def __len__(self):
         """
         number of objects in the dataset
         """
@@ -459,5 +459,17 @@ class BddDataset(Dataset):
         else:
             annot_padded = torch.ones((len(labels_app), 1, 5)) * -1
 
-        return {'image': torch.stack(img, 0), 'annot': annot_padded, 'segmentation': torch.stack(segmentation, 0),
-                'shapes': shapes}
+        boxes = annot_padded[:,:,:4]
+        labels = annot_padded[:,:,4]
+        scores = labels != -1
+        
+        collated = {
+            'image': torch.stack(img, 0),
+            'annot': annot_padded,
+            'segmentation': torch.stack(segmentation, 0),
+            'shapes': shapes,
+            'detection_boxes': boxes,
+            'detection_labels': labels,
+            'detection_scores': scores,
+        }
+        return collated
