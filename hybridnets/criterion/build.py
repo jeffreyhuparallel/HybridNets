@@ -34,8 +34,8 @@ class DetectionLoss(pl.LightningModule):
         cls_loss, reg_loss = self.det_criterion(classification, regression, anchors, annotations)
 
         losses = {
-            "cls_loss": cls_loss,
-            "reg_loss": reg_loss,
+            "classification_loss": cls_loss,
+            "regression_loss": reg_loss,
         }
         return losses
 
@@ -53,7 +53,7 @@ class SegmentationLoss(pl.LightningModule):
         seg_loss = tversky_loss + 1 * focal_loss
         
         losses = {
-            "seg_loss": seg_loss,
+            "segmentation_loss": seg_loss,
         }
         return losses
         
