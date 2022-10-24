@@ -30,7 +30,11 @@ class HybridNetsBackbone(pl.LightningModule):
         self.conf_thres = 0.25
         self.iou_thres = 0.3
         self.vis_threshold = 0.25
-        self.categories = lookup_category_list(cfg.DATASETS.TRAIN[0], include_background=False)
+        
+        dataset_name = cfg.DATASETS.TRAIN[0]
+        cat_list = lookup_category_list(dataset_name)
+        obj_list = [c.replace("pedestrian", "person") for c in cat_list[1:]]
+        self.categories = obj_list
 
         self.num_anchors = len(self.anchors_ratios) * self.num_scales
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6, 7]

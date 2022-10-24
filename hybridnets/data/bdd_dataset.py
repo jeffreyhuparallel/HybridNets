@@ -24,7 +24,6 @@ class BddDataset(Dataset):
         self.is_train = is_train
         self.transform = transform
         
-        self.dataset_name = cfg.DATASETS.TRAIN[0]
         self.inputsize = list(cfg.INPUT.SIZE)
         self.Tensor = transforms.ToTensor()
   
@@ -56,7 +55,9 @@ class BddDataset(Dataset):
         
         self.shapes = np.array([720, 1280])
         
-        self.obj_list = lookup_category_list(self.dataset_name, include_background=False)
+        dataset_name = cfg.DATASETS.TRAIN[0]
+        cat_list = lookup_category_list(dataset_name)
+        self.obj_list = [c.replace("pedestrian", "person") for c in cat_list[1:]]
         self.obj_combine = []
         if len(self.obj_list) == 1:
             self.obj_combine = ['car', 'bus', 'truck', 'train']

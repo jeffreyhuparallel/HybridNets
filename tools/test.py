@@ -17,7 +17,8 @@ from railyard.util.categories import lookup_category_list
 @torch.no_grad()
 def test(model, val_dataloader, cfg):
     dataset_name = cfg.DATASETS.VAL[0]
-    obj_list = lookup_category_list(dataset_name, include_background=False)
+    cat_list = lookup_category_list(dataset_name)
+    obj_list = [c.replace("pedestrian", "person") for c in cat_list[1:]]
     seg_list = ['road', 'lane']
     seg_mode = "multiclass"
     output_dir = cfg.OUTPUT_DIR
