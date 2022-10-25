@@ -461,8 +461,8 @@ class BddDataset(Dataset):
             annot_padded = torch.ones((len(labels_app), 1, 5)) * -1
 
         boxes = annot_padded[:,:,:4]
-        labels = annot_padded[:,:,4]
-        scores = labels != -1
+        labels = annot_padded[:,:,4] + 1
+        scores = annot_padded[:,:,4] != -1
         
         collated = {
             'image': torch.stack(img, 0),

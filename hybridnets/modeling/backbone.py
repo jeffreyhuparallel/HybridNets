@@ -32,9 +32,7 @@ class HybridNetsBackbone(pl.LightningModule):
         self.vis_threshold = 0.25
         
         dataset_name = cfg.DATASETS.TRAIN[0]
-        cat_list = lookup_category_list(dataset_name)
-        obj_list = [c.replace("pedestrian", "person") for c in cat_list[1:]]
-        self.categories = obj_list
+        self.categories = lookup_category_list(dataset_name)
 
         self.num_anchors = len(self.anchors_ratios) * self.num_scales
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6, 7]
@@ -159,23 +157,27 @@ class HybridNetsBackbone(pl.LightningModule):
                         regressBoxes, clipBoxes,
                         self.conf_thres, self.iou_thres)
         
-        detection_boxes = []
-        detection_scores = []
-        detection_labels = []
+        boxes_all = []
+        scores_all = []
+        labels_all = []
         for d in det:
             boxes = torch.from_numpy(d['rois']).to(self.device)
             scores = torch.from_numpy(d['scores']).to(self.device)
             labels = torch.from_numpy(d['class_ids']).to(self.device)
-            detection_boxes.append(boxes)
-            detection_scores.append(scores)
-            detection_labels.append(labels)
+            
+            # Add background class
+            labels += 1
+        
+            boxes_all.append(boxes)
+            scores_all.append(scores)
+            labels_all.append(labels)
         
         out = {
             "segmentation": seg,
             "detection": det,
-            "detection_boxes": detection_boxes,
-            "detection_scores": detection_scores,
-            "detection_labels": detection_labels,
+            "detection_boxes": boxes_all,
+            "detection_scores": scores_all,
+            "detection_labels": labels_all,
         }
         return out
     

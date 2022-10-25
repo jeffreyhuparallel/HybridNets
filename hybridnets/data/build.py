@@ -2,6 +2,7 @@ import torch
 from torchvision import transforms
 
 from hybridnets.data.bdd_dataset import BddDataset
+from railyard.data import build_data_loader as build_data_loader_from_railyard
 
 
 def build_transform(cfg, split="train"):
@@ -27,6 +28,9 @@ def build_dataset(cfg, split="train"):
     return dataset
 
 def build_data_loader(cfg, split="train"):
+    if split == "test":
+        return build_data_loader_from_railyard(cfg, split=split)
+    
     dataset = build_dataset(cfg, split=split)
 
     batch_size = cfg.DATALOADER.BATCH_SIZE
