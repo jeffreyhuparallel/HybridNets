@@ -25,13 +25,7 @@ class DetectionLoss(pl.LightningModule):
         self.det_criterion = FocalLoss()
     
     def __call__(self, inp, target):
-        annotations = inp['annot']
-        
-        regression = target["regression"]
-        classification = target["classification"]
-        anchors = target["anchors"]
-
-        cls_loss, reg_loss = self.det_criterion(classification, regression, anchors, annotations)
+        cls_loss, reg_loss = self.det_criterion(inp, target)
 
         losses = {
             "classification_loss": cls_loss,

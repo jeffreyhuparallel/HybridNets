@@ -31,7 +31,13 @@ class FocalLoss(nn.Module):
     def __init__(self):
         super(FocalLoss, self).__init__()
 
-    def forward(self, classifications, regressions, anchors, annotations, **kwargs):
+    def forward(self, inp, target, **kwargs):
+        boxes = inp["detection_boxes"]
+        labels = inp["detection_labels"]
+        regressions = target["regression"]
+        classifications = target["classification"]
+        anchors = target["anchors"]
+        
         alpha = 0.25
         gamma = 2.0
         batch_size = classifications.shape[0]
@@ -50,9 +56,12 @@ class FocalLoss(nn.Module):
 
             classification = classifications[j, :, :]
             regression = regressions[j, :, :]
-
-            bbox_annotation = annotations[j]
-            bbox_annotation = bbox_annotation[bbox_annotation[:, 4] != -1]
+            
+            box = boxes[j]
+            label = labels[j]
+            box = box[label != 0]
+            label = label[label != 0] - 1
+            bbox_annotation = torch.cat([box, label.unsqueeze(dim=1)], dim=1)
 
             # print(bbox_annotation)
 

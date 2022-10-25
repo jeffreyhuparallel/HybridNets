@@ -466,9 +466,7 @@ class BddDataset(Dataset):
         
         collated = {
             'image': torch.stack(img, 0),
-            'annot': annot_padded,
             'segmentation': torch.stack(segmentation, 0),
-            'shapes': shapes,
             'detection_boxes': boxes,
             'detection_labels': labels,
             'detection_scores': scores,
