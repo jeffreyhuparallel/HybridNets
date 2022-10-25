@@ -5,14 +5,14 @@ import timm
 import torchvision
 import pytorch_lightning as pl
 
-from hybridnets.encoders import get_encoder
-from hybridnets.modeling.model import BiFPN, Regressor, Classifier, BiFPNDecoder
-from hybridnets.utils.utils import Anchors, init_weights, BBoxTransform, ClipBoxes, postprocess
-
 from railyard.util.categories import lookup_category_list
 from railyard.util.visualization import normalize_tensor, apply_color, overlay_images_batch, draw_bounding_boxes
 
-class HybridNetsBackbone(pl.LightningModule):
+from hybridnets.modeling.encoders import get_encoder
+from hybridnets.modeling.components import BiFPN, Regressor, Classifier, BiFPNDecoder
+from hybridnets.utils.utils import Anchors, init_weights, BBoxTransform, ClipBoxes, postprocess
+
+class HybridNet(pl.LightningModule):
     def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg

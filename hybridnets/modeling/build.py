@@ -1,9 +1,9 @@
 import torch
 
-from .backbone import HybridNetsBackbone
+from .hybridnet import HybridNet
 
 def build_model(cfg, pretrained=False):
-    model = HybridNetsBackbone(cfg)
+    model = HybridNet(cfg)
     if pretrained:
         if cfg.MODEL.BACKBONE.NAME == "efficientnet":
             weights_path = "./output/hybridnet_saved/checkpoints/hybridnets-d3_199.pth"
