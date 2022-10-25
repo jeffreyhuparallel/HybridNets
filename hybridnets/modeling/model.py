@@ -663,27 +663,12 @@ class Activation(nn.Module):
             self.activation = nn.LogSoftmax(**params)
         elif name == 'tanh':
             self.activation = nn.Tanh()
-        # elif name == 'argmax':
-        #     self.activation = ArgMax(**params)
-        # elif name == 'argmax2d':
-        #     self.activation = ArgMax(dim=1, **params)
-        # elif name == 'clamp':
-        #     self.activation = Clamp(**params)
         elif callable(name):
             self.activation = name(**params)
         else:
             raise ValueError('Activation should be callable/sigmoid/softmax/logsoftmax/tanh/None; got {}'.format(name))
     def forward(self, x):
         return self.activation(x)
-
-
-class SegmentationHead(nn.Sequential):
-
-    def __init__(self, in_channels, out_channels, kernel_size=3, activation=None, upsampling=1):
-        conv2d = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=kernel_size // 2)
-        upsampling = nn.UpsamplingBilinear2d(scale_factor=upsampling) if upsampling > 1 else nn.Identity()
-        activation = Activation(activation)
-        super().__init__(conv2d, upsampling, activation)
 
 
 class ClassificationHead(nn.Sequential):
@@ -698,10 +683,3 @@ class ClassificationHead(nn.Sequential):
         activation = Activation(activation)
         super().__init__(pool, flatten, dropout, linear, activation)
 
-
-if __name__ == '__main__':
-    from tensorboardX import SummaryWriter
-
-
-    def count_parameters(model):
-        return sum(p.numel() for p in model.parameters() if p.requires_grad)

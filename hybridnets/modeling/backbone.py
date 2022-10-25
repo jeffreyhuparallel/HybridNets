@@ -7,10 +7,8 @@ import pytorch_lightning as pl
 
 from hybridnets.encoders import get_encoder
 from hybridnets.modeling.model import BiFPN, Regressor, Classifier, BiFPNDecoder
-from hybridnets.modeling.model import SegmentationHead
 from hybridnets.utils.utils import Anchors, init_weights
 from hybridnets.utils.utils import BBoxTransform, ClipBoxes, postprocess
-from hybridnets.utils.constants import *
 
 from railyard.util.categories import lookup_category_list
 from railyard.util.visualization import normalize_tensor, apply_color, overlay_images_batch, draw_bounding_boxes
@@ -21,8 +19,6 @@ class HybridNetsBackbone(pl.LightningModule):
         self.cfg = cfg
         self.backbone_name = cfg.MODEL.BACKBONE.NAME
         self.compound_coef = cfg.MODEL.BACKBONE.COMPOUND_COEF
-        self.seg_classes = 2
-        self.seg_mode = "multiclass"
         self.anchors_scales = cfg.MODEL.DETECTION_HEAD.ANCHORS_SCALES
         self.anchors_ratios = cfg.MODEL.DETECTION_HEAD.ANCHORS_RATIOS
         self.num_scales = len(self.anchors_scales)
@@ -70,17 +66,7 @@ class HybridNetsBackbone(pl.LightningModule):
                                    pyramid_levels=self.pyramid_levels[self.compound_coef],
                                    onnx_export=False)
 
-        '''Modified by Dat Vu'''
-        # self.decoder = DecoderModule()
         self.bifpndecoder = BiFPNDecoder(pyramid_channels=self.fpn_num_filters[self.compound_coef])
-
-        self.segmentation_head = SegmentationHead(
-            in_channels=64,
-            out_channels=1 if self.seg_mode == BINARY_MODE else self.seg_classes+1,
-            activation=None,
-            kernel_size=1,
-            upsampling=4,
-        )
 
         self.classifier = Classifier(in_channels=self.fpn_num_filters[self.compound_coef], num_anchors=self.num_anchors,
                                      num_classes=self.num_classes,
@@ -104,7 +90,6 @@ class HybridNetsBackbone(pl.LightningModule):
                                 onnx_export=False)
     
         self.initialize_decoder(self.bifpndecoder)
-        self.initialize_head(self.segmentation_head)
         self.initialize_decoder(self.bifpn)
         self.initialize_weights()
 
@@ -124,7 +109,6 @@ class HybridNetsBackbone(pl.LightningModule):
         
         outputs = self.bifpndecoder((p2,p3,p4,p5,p6,p7))
 
-        segmentation = self.segmentation_head(outputs)
         regression = self.regressor(features)
         classification = self.classifier(features)
         anchors = self.anchors(x, x.dtype)
@@ -135,7 +119,6 @@ class HybridNetsBackbone(pl.LightningModule):
             "regression": regression,
             "classification": classification,
             "anchors": anchors,
-            "segmentation": segmentation,
         }
         return target
     
@@ -145,9 +128,6 @@ class HybridNetsBackbone(pl.LightningModule):
         regression = target["regression"]
         classification = target["classification"]
         anchors = target["anchors"]
-        seg = target["segmentation"]
-        
-        _, seg = torch.max(seg, dim=1)
         
         regressBoxes = BBoxTransform()
         clipBoxes = ClipBoxes()
@@ -172,7 +152,6 @@ class HybridNetsBackbone(pl.LightningModule):
             labels_all.append(labels)
         
         out = {
-            "segmentation": seg,
             "detection": det,
             "detection_boxes": boxes_all,
             "detection_scores": scores_all,
@@ -187,22 +166,9 @@ class HybridNetsBackbone(pl.LightningModule):
             "main_vis": main_vis,
         }
         
-        # self.visualize_seg(batch, vis)
         if "detection_boxes" in batch:
             self.visualize_det(batch, vis)
         return vis
-
-    def visualize_seg(self, batch, vis) -> None:
-        seg_batch = batch["segmentation"].cpu().detach().numpy()
-
-        images = []
-        for seg in seg_batch:
-            seg_color = apply_color(seg)
-            seg_color = torch.from_numpy(np.array(seg_color).transpose((2, 0, 1)))
-            images.append(seg_color)
-        images = torch.stack(images, dim=0)
-
-        vis["segmentation_vis"] = images
 
     def visualize_det(self, batch, vis) -> None:
         image_batch = vis["main_vis"]
@@ -246,14 +212,6 @@ class HybridNetsBackbone(pl.LightningModule):
                 nn.init.constant_(m.bias, 0)
 
             elif isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-
-
-    def initialize_head(self, module):
-        for m in module.modules():
-            if isinstance(m, (nn.Linear, nn.Conv2d)):
                 nn.init.xavier_uniform_(m.weight)
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
