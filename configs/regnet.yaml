@@ -1,4 +1,5 @@
 MODEL:
+  DETECTION_ON: True
   BACKBONE:
     NAME: "regnetx_004"
   DETECTION_HEAD:

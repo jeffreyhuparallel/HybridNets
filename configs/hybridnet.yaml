@@ -1,6 +1,5 @@
 MODEL:
   DETECTION_ON: True
-  SEGMENTATION_ON: False
   BACKBONE:
     NAME: "efficientnet"
     COMPOUND_COEF: 3

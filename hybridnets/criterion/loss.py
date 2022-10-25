@@ -2,12 +2,7 @@ import torch
 import torch.nn as nn
 import cv2
 import numpy as np
-from torch.nn.modules.loss import _Loss
-import torch.nn.functional as F
 from typing import Optional, List
-from functools import partial
-
-from hybridnets.utils.utils import postprocess, BBoxTransform, ClipBoxes
 
 def calc_iou(a, b):
     area = (b[:, 2] - b[:, 0]) * (b[:, 3] - b[:, 1])
@@ -24,7 +19,7 @@ def calc_iou(a, b):
 
 class FocalLoss(nn.Module):
     def __init__(self):
-        super(FocalLoss, self).__init__()
+        super().__init__()
 
     def forward(self, inp, target):
         boxes = inp["detection_boxes"]
