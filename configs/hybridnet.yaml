@@ -19,4 +19,4 @@ DATALOADER:
   NUM_WORKERS: 8
 SOLVER:
   BASE_LR: 0.0001
-OUTPUT_DIR: "./output/hybridnet_resume"
+OUTPUT_DIR: "./output/hybridnet_no_resume"
