@@ -3,8 +3,9 @@ import argparse
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from hybridnets.config import get_cfg
 from hybridnets.modules import build_module
+
+from railyard.config import get_cfg
 from railyard.util import cli_logo
 
 

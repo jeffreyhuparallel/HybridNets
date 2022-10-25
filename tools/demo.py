@@ -9,9 +9,9 @@ from torchvision import transforms
 import argparse
 from tqdm import tqdm
 
-from hybridnets.config import get_cfg
 from hybridnets.modeling import build_model
 
+from railyard.config import get_cfg
 from railyard.dataclasses import Sample
 from railyard.data.transforms import build_transform
 from railyard.util import read_file, save_file, get_file_names

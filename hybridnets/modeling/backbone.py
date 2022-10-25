@@ -17,7 +17,7 @@ class HybridNetsBackbone(pl.LightningModule):
         super().__init__()
         self.cfg = cfg
         self.backbone_name = cfg.MODEL.BACKBONE.NAME
-        self.compound_coef = cfg.MODEL.BACKBONE.COMPOUND_COEF
+        self.compound_coef = 3 # efficientnet-b3
         self.anchors_scales = cfg.MODEL.DETECTION_HEAD.ANCHORS_SCALES
         self.anchors_ratios = cfg.MODEL.DETECTION_HEAD.ANCHORS_RATIOS
         self.num_scales = len(self.anchors_scales)
@@ -73,7 +73,7 @@ class HybridNetsBackbone(pl.LightningModule):
                                      pyramid_levels=self.pyramid_levels[self.compound_coef],
                                      onnx_export=False)
 
-        if self.backbone_name == "efficientnet":
+        if "efficientnet" in self.backbone_name:
             # EfficientNet_Pytorch
             self.encoder = get_encoder(
                 'efficientnet-b' + str(self.backbone_compound_coef[self.compound_coef]),
