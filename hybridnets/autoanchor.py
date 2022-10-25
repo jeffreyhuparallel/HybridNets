@@ -1,12 +1,12 @@
-# Auto-anchor utils
-
+import os
 import numpy as np
 import torch
 import yaml
 from scipy.cluster.vq import kmeans
-from tqdm.autonotebook import tqdm
+from tqdm import tqdm
 import math
 
+from railyard.util import read_file
 
 def check_anchor_order(anchors, anchor_grid, stride):
     # Check anchor order against stride order for YOLOv5 Detect() module m, and correct if necessary
@@ -92,22 +92,42 @@ def kmean_anchors(path='./data/coco128.yaml', n=9, img_size=640, thr=4.0, gen=10
     else:
         dataset = path  # dataset
 
-    labels = [db['label'] for db in dataset.db if len(db['label'])]
-    labels = np.vstack(labels)
-    if not (labels[:, 1:] <= 1).all():
-        # normalize label
-        labels[:, [2, 4]] = labels[:, [2, 4]] / dataset.shapes[0]
-        labels[:, [1, 3]] = labels[:, [1, 3]] / dataset.shapes[1]
-    # Get label wh
-    shapes = img_size * dataset.shapes / dataset.shapes.max()
-    # wh0 = np.concatenate([l[:, 3:5] * shapes for l in labels])  # wh
-    wh0 = labels[:, 3:5] * shapes
+    # labels = [db['label'] for db in dataset.db if len(db['label'])]
+    # labels = np.vstack(labels)
+    # shapes = np.array([360, 640])
+    # wh0 = labels[:, 3:5] * shapes
+    
+    size = (640, 384)
+    sample_name = dataset.sample_list[0]
+    img_size = dataset.get_sample(sample_name)["image"].size
+    
+    print(size, img_size)
+    
+    boxes_all = []
+    for sample_name in tqdm(dataset.sample_list):
+        boxes, labels, scores = dataset.ann.get_detection_labels(sample_name)
+        boxes_all.append(boxes)
+    boxes_all = np.vstack(boxes_all)
+    widths = (boxes_all[:,2] - boxes_all[:,0]) / img_size[0]
+    heights = (boxes_all[:,3] - boxes_all[:,1]) / img_size[1]
+    widths *= size[0]
+    heights *= size[1]
+    wh0 = np.stack([widths, heights]).T
+    
+    print(np.max(wh0, axis=0))
+    print(np.median(wh0, axis=0))
+    print(np.min(wh0, axis=0))
+    print(wh0.shape)
+    
     # Filter
     i = (wh0 < 3.0).any(1).sum()
     if i:
         print('WARNING: Extremely small objects found. '
               '%g of %g labels are < 3 pixels in width or height.' % (i, len(wh0)))
     wh = wh0[(wh0 >= 2.0).any(1)]  # filter > 2 pixels
+    print(np.max(wh, axis=0))
+    print(np.median(wh, axis=0))
+    print(np.min(wh, axis=0))
 
     # Kmeans calculation
     print('Running kmeans for %g anchors on %g points...' % (n, len(wh)))

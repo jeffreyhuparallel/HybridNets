@@ -10,8 +10,8 @@ def main(args):
         cfg.merge_from_file(args.config_file)
     print(f"Running with config:\n{cfg}")
 
-    train_dataloader = build_data_loader(cfg, split="train")
-    anchors_scales, anchors_ratios = run_anchor(None, train_dataloader.dataset)
+    dataloader = build_data_loader(cfg, split="val")
+    anchors_scales, anchors_ratios = run_anchor(None, dataloader.dataset)
     
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ def main(args):
     output_dir = cfg.OUTPUT_DIR
     
     batch_size = 1
-    obj_list = lookup_category_list(dataset_name, include_background=False)
+    obj_list = lookup_category_list(dataset_name)
     
     image_dir = "demo/image"
     file_names = get_file_names(image_dir, ext=".jpg")

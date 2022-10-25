@@ -31,8 +31,7 @@ class HybridNetsBackbone(pl.LightningModule):
         self.iou_thres = 0.3
         self.vis_threshold = 0.25
         
-        dataset_name = cfg.DATASETS.TRAIN[0]
-        self.categories = lookup_category_list(dataset_name)
+        self.cat_list = lookup_category_list(cfg.MODEL.DETECTION_HEAD.CATEGORY_LIST)
 
         self.num_anchors = len(self.anchors_ratios) * self.num_scales
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6, 7]
@@ -223,7 +222,7 @@ class HybridNetsBackbone(pl.LightningModule):
             labels = labels[scores > self.vis_threshold]
             scores = scores[scores > self.vis_threshold]
 
-            cat_names = [self.categories[int(l)] for l in labels]
+            cat_names = [self.cat_list[int(l)] for l in labels]
             captions = [f"{c} {s:.2f}" for c, s in zip(cat_names, scores)]
             colors = apply_color(labels)
 
