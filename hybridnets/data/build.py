@@ -28,7 +28,7 @@ def build_dataset(cfg, split="train"):
     return dataset
 
 def build_data_loader(cfg, split="train"):
-    if split == "test":
+    if True:
         return build_data_loader_from_railyard(cfg, split=split)
     
     dataset = build_dataset(cfg, split=split)
