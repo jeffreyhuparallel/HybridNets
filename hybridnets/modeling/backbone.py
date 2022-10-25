@@ -23,7 +23,6 @@ class HybridNetsBackbone(pl.LightningModule):
         self.compound_coef = cfg.MODEL.BACKBONE.COMPOUND_COEF
         self.seg_classes = 2
         self.seg_mode = "multiclass"
-        self.num_classes = cfg.MODEL.DETECTION_HEAD.NUM_CLASSES
         self.anchors_scales = cfg.MODEL.DETECTION_HEAD.ANCHORS_SCALES
         self.anchors_ratios = cfg.MODEL.DETECTION_HEAD.ANCHORS_RATIOS
         self.num_scales = len(self.anchors_scales)
@@ -32,6 +31,7 @@ class HybridNetsBackbone(pl.LightningModule):
         self.vis_threshold = 0.25
         
         self.cat_list = lookup_category_list(cfg.MODEL.DETECTION_HEAD.CATEGORY_LIST)
+        self.num_classes = len(self.cat_list) - 1
 
         self.num_anchors = len(self.anchors_ratios) * self.num_scales
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6, 7]

@@ -9,7 +9,7 @@ import torchvision.transforms.functional as F
 from PIL import Image
 
 from ..criterion import build_criterion
-from ..data import build_data_loader
+from railyard.data import build_data_loader
 from railyard.evaluation import build_evaluator
 from ..modeling import build_model
 from railyard.util import save_file

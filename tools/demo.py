@@ -10,9 +10,10 @@ import argparse
 from tqdm import tqdm
 
 from hybridnets.config import get_cfg
-from hybridnets.data import build_transform
 from hybridnets.modeling import build_model
 
+from railyard.dataclasses import Sample
+from railyard.data.transforms import build_transform
 from railyard.util import read_file, save_file, get_file_names
 from railyard.util.categories import lookup_category_list
 from railyard.util.visualization import apply_color, overlay_images_batch, overlay_images, draw_bounding_boxes, normalize_tensor
@@ -34,8 +35,8 @@ def main(args):
     sample_names = [os.path.splitext(fn)[0] for fn in file_names]
     transform = build_transform(cfg, split="predict")
     
-    model = build_model(cfg)
-    model.load_state_dict(torch.load(args.ckpt, map_location='cuda'))
+    model = build_model(cfg, pretrained=True)
+    # model.load_state_dict(torch.load(args.ckpt, map_location='cuda'))
 
     model.requires_grad_(False)
     model.eval()
@@ -44,10 +45,11 @@ def main(args):
     with torch.no_grad():
         for sample_name in tqdm(sample_names):
             image = read_file(os.path.join(image_dir, f"{sample_name}.jpg"))
-            x = transform(image)
-            x = torch.unsqueeze(x, dim=0)
-            x = x.to(torch.float32).cuda()
-            inp = {"image": x}
+            sample = Sample(image=image)
+            inp = transform(sample)
+            
+            inp["image"] = torch.unsqueeze(inp["image"], dim=0)
+            inp["image"] = inp["image"].to(torch.float32).cuda()
             
             target = model(inp)
             out = model.postprocess(target)
