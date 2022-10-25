@@ -188,7 +188,7 @@ class HybridNetsBackbone(pl.LightningModule):
             "main_vis": main_vis,
         }
         
-        self.visualize_seg(batch, vis)
+        # self.visualize_seg(batch, vis)
         if "detection_boxes" in batch:
             self.visualize_det(batch, vis)
         return vis

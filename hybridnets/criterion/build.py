@@ -55,7 +55,7 @@ class SegmentationLoss(pl.LightningModule):
 def build_criterion(cfg):
     criterions = [
         DetectionLoss(cfg),
-        SegmentationLoss(cfg),
+        # SegmentationLoss(cfg),
     ]
     weights = [1, 1]
     
