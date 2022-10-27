@@ -1,18 +1,19 @@
 import os
 import numpy as np
 import torch
-from torch import nn
+import torch.nn as nn
 import timm
 import torchvision
 import pytorch_lightning as pl
 
 from railyard.env import MODEL_ZOO_DIR
+from hybridnets.modeling.encoders import get_encoder
 from railyard.util.categories import lookup_category_list
 from railyard.util.visualization import normalize_tensor, apply_color, overlay_images_batch, draw_bounding_boxes
 
-from hybridnets.modeling.encoders import get_encoder
-from hybridnets.modeling.components import BiFPN, Regressor, Classifier, BiFPNDecoder
-from hybridnets.utils.utils import Anchors, init_weights, BBoxTransform, ClipBoxes, postprocess
+from .components import BiFPN, Regressor, Classifier, BiFPNDecoder
+from .anchors import Anchors, BBoxTransform, ClipBoxes
+from .initialization import init_weights
 
 class HybridNet(pl.LightningModule):
     def __init__(self, cfg):
@@ -216,3 +217,44 @@ class HybridNet(pl.LightningModule):
     
     def initialize_weights(self):
         init_weights(self)
+
+
+def postprocess(x, anchors, regression, classification, regressBoxes, clipBoxes, threshold, iou_threshold):
+    transformed_anchors = regressBoxes(anchors, regression)
+    transformed_anchors = clipBoxes(transformed_anchors, x)
+    scores = torch.max(classification, dim=2, keepdim=True)[0]
+    scores_over_thresh = (scores > threshold)[:, :, 0]
+    out = []
+    for i in range(x.shape[0]):
+        if scores_over_thresh[i].sum() == 0:
+            out.append({
+                'rois': np.array(()),
+                'class_ids': np.array(()),
+                'scores': np.array(()),
+            })
+            continue
+
+        classification_per = classification[i, scores_over_thresh[i, :], ...].permute(1, 0)
+        transformed_anchors_per = transformed_anchors[i, scores_over_thresh[i, :], ...]
+        scores_per = scores[i, scores_over_thresh[i, :], ...]
+        scores_, classes_ = classification_per.max(dim=0)
+        anchors_nms_idx = torchvision.ops.boxes.batched_nms(transformed_anchors_per, scores_per[:, 0], classes_, iou_threshold=iou_threshold)
+
+        if anchors_nms_idx.shape[0] != 0:
+            classes_ = classes_[anchors_nms_idx]
+            scores_ = scores_[anchors_nms_idx]
+            boxes_ = transformed_anchors_per[anchors_nms_idx, :]
+
+            out.append({
+                'rois': boxes_.cpu().detach().numpy(),
+                'class_ids': classes_.cpu().detach().numpy(),
+                'scores': scores_.cpu().detach().numpy(),
+            })
+        else:
+            out.append({
+                'rois': np.array(()),
+                'class_ids': np.array(()),
+                'scores': np.array(()),
+            })
+
+    return out
