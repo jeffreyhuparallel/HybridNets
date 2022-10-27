@@ -1,1 +1,1 @@
-from .build import build_criterion
+from .build import build_criterion, DetectionLoss

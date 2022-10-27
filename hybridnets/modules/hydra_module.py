@@ -5,15 +5,13 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torchvision
-import torchvision.transforms.functional as F
-from PIL import Image
 
 from ..criterion import build_criterion
-from ..modeling import build_model
-
 from railyard.data import build_data_loader
 from railyard.evaluation import build_evaluator
+from ..modeling import build_model
 from railyard.util import save_file
+from railyard.util.visualization import normalize_tensor
 
 
 class HydraModule(pl.LightningModule):
@@ -30,7 +28,7 @@ class HydraModule(pl.LightningModule):
         self.learning_rate = cfg.SOLVER.BASE_LR
         self.output_dir = cfg.OUTPUT_DIR
 
-        self.net = build_model(cfg, pretrained=True)
+        self.net = build_model(cfg)
         self.criterion = build_criterion(cfg)
         self.evaluator = build_evaluator(cfg)
 
@@ -43,7 +41,6 @@ class HydraModule(pl.LightningModule):
         for k, v in losses.items():
             self.log(f"train/{k}", v)
 
-        # Visualize
         if batch_idx == 0:
             out = self.net.postprocess(target)
             self.log_visualizations(inp, out, split="train")
@@ -55,7 +52,6 @@ class HydraModule(pl.LightningModule):
         for k, v in losses.items():
             self.log(f"val/{k}", v, on_epoch=True)
 
-        # Visualize
         if batch_idx == 0:
             out = self.net.postprocess(target)
             self.log_visualizations(inp, out, split="val")
@@ -103,8 +99,11 @@ class HydraModule(pl.LightningModule):
             )
 
     def save_visualizations(self, inp, out, split="train"):
+        # Fill out missing keys in `out` from `inp`
         out.update({k: v for k, v in inp.items() if k not in out})
-        vis_pr = self.net.visualize(out)
+
+        vis_pr = {"main_vis": normalize_tensor(out["image"])}
+        self.net.visualize(out, vis_pr)
 
         dataset = self.get_dataloader(split).dataset
         sample_names = [dataset.get_sample_name(idx) for idx in inp["idx"]]
@@ -117,9 +116,13 @@ class HydraModule(pl.LightningModule):
                 )
 
     def log_visualizations(self, inp, out, split="train"):
+        # Fill out missing keys in `out` from `inp`
         out.update({k: v for k, v in inp.items() if k not in out})
-        vis_gt = self.net.visualize(inp)
-        vis_pr = self.net.visualize(out)
+
+        vis_gt = {"main_vis": normalize_tensor(inp["image"])}
+        vis_pr = {"main_vis": normalize_tensor(out["image"])}
+        self.net.visualize(inp, vis_gt)
+        self.net.visualize(out, vis_pr)
         self.log_images(vis_gt, postfix=f"/gt/{split}")
         self.log_images(vis_pr, postfix=f"/pr/{split}")
 

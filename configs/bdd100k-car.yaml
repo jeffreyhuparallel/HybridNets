@@ -1,5 +1,6 @@
 MODEL:
   DETECTION_ON: True
+  META_ARCHITECTURE: hybridnet
   BACKBONE:
     NAME: "efficientnet"
   DETECTION_HEAD:

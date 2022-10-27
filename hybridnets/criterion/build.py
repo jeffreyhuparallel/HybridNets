@@ -20,7 +20,7 @@ class CriterionCompose(pl.LightningModule):
 
 
 class DetectionLoss(pl.LightningModule):
-    def __init__(self, cfg):
+    def __init__(self):
         super().__init__()
         self.det_criterion = FocalLoss()
     
@@ -36,7 +36,7 @@ class DetectionLoss(pl.LightningModule):
         
 def build_criterion(cfg):
     criterions = [
-        DetectionLoss(cfg),
+        DetectionLoss(),
     ]
     weights = [1, 1]
     

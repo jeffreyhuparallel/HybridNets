@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch
 from torch import nn
@@ -5,6 +6,7 @@ import timm
 import torchvision
 import pytorch_lightning as pl
 
+from railyard.env import MODEL_ZOO_DIR
 from railyard.util.categories import lookup_category_list
 from railyard.util.visualization import normalize_tensor, apply_color, overlay_images_batch, draw_bounding_boxes
 
@@ -18,6 +20,7 @@ class HybridNet(pl.LightningModule):
         self.cfg = cfg
         self.backbone_name = cfg.MODEL.BACKBONE.NAME
         self.compound_coef = 3 # efficientnet-b3
+        self.pretrained = cfg.MODEL.DETECTION_HEAD.PRETRAINED
         self.anchors_scales = cfg.MODEL.DETECTION_HEAD.ANCHORS_SCALES
         self.anchors_ratios = cfg.MODEL.DETECTION_HEAD.ANCHORS_RATIOS
         self.num_scales = len(self.anchors_scales)
@@ -91,6 +94,13 @@ class HybridNet(pl.LightningModule):
         self.initialize_decoder(self.bifpndecoder)
         self.initialize_decoder(self.bifpn)
         self.initialize_weights()
+        
+        if self.pretrained:
+            if self.backbone_name == "efficientnet":
+                weights_path = os.path.join(MODEL_ZOO_DIR, "hybrid_efficientnet_d3.pth")
+            else:
+                weights_path = os.path.join(MODEL_ZOO_DIR, "hybrid_regnetx_004.pth")
+            self.load_state_dict(torch.load(weights_path), strict=False)
 
     def freeze_bn(self):
         for m in self.modules():
@@ -157,19 +167,8 @@ class HybridNet(pl.LightningModule):
             "detection_labels": labels_all,
         }
         return out
-    
-    def visualize(self, batch):
-        main_vis = batch["image"].cpu().detach()
-        main_vis = normalize_tensor(main_vis)
-        vis = {
-            "main_vis": main_vis,
-        }
-        
-        if "detection_boxes" in batch:
-            self.visualize_det(batch, vis)
-        return vis
 
-    def visualize_det(self, batch, vis) -> None:
+    def visualize(self, batch, vis) -> None:
         image_batch = vis["main_vis"]
         boxes_all = batch["detection_boxes"]
         labels_all = batch["detection_labels"]
