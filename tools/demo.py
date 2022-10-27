@@ -1,22 +1,15 @@
-import time
+import os
+import argparse
 import torch
 import torchvision
-import cv2
-from PIL import Image
-import numpy as np
-import os
-from torchvision import transforms
-import argparse
 from tqdm import tqdm
-
-from hybridnets.modeling import build_model
 
 from railyard.config import get_cfg
 from railyard.dataclasses import Sample
 from railyard.data.transforms import build_transform
+from hybridnets.modeling import build_model
 from railyard.util import read_file, save_file, get_file_names
-from railyard.util.categories import lookup_category_list
-from railyard.util.visualization import apply_color, overlay_images_batch, overlay_images, draw_bounding_boxes, normalize_tensor
+from railyard.util.visualization import normalize_tensor
 
 def main(args):
     cfg = get_cfg()
@@ -24,37 +17,31 @@ def main(args):
         cfg.merge_from_file(args.config_file)
     print(f"Running with config:\n{cfg}")
 
-    dataset_name = cfg.DATASETS.PREDICT[0]
+    image_dir = "demo/image"
     output_dir = cfg.OUTPUT_DIR
     
-    batch_size = 1
-    obj_list = lookup_category_list(dataset_name)
-    
-    image_dir = "demo/image"
     file_names = get_file_names(image_dir, ext=".jpg")
     sample_names = [os.path.splitext(fn)[0] for fn in file_names]
-    transform = build_transform(cfg, split="predict")
     
-    model = build_model(cfg, pretrained=True)
-    # model.load_state_dict(torch.load(args.ckpt, map_location='cuda'))
-
-    model.requires_grad_(False)
-    model.eval()
+    transform = build_transform(cfg, split="predict")
+    model = build_model(cfg)
     model = model.cuda()
+    model.eval()
 
     with torch.no_grad():
         for sample_name in tqdm(sample_names):
             image = read_file(os.path.join(image_dir, f"{sample_name}.jpg"))
             sample = Sample(image=image)
-            inp = transform(sample)
             
-            inp["image"] = torch.unsqueeze(inp["image"], dim=0)
-            inp["image"] = inp["image"].to(torch.float32).cuda()
+            inp = transform(sample)
+            inp["image"] = torch.unsqueeze(inp["image"], dim=0).cuda()
             
             target = model(inp)
             out = model.postprocess(target)
-            out.update({k: v for k, v in inp.items() if k not in out})
-            vis = model.visualize(out)
+            
+            # Visualize
+            vis = {"main_vis": normalize_tensor(inp["image"])}
+            model.visualize(out, vis)
             
             for k, v in vis.items():
                 image = torchvision.transforms.ToPILImage()(v[0])
@@ -65,9 +52,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-c", "--config-file", required=True, help="Path to config file"
-    )
-    parser.add_argument(
-        "-p", "--ckpt", default=None, type=str, help="Path to checkpoint"
     )
     args = parser.parse_args()
     print(args)
