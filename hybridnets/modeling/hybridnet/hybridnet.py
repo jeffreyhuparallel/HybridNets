@@ -3,16 +3,15 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
-import timm
 import torchvision
 import pytorch_lightning as pl
 
 from railyard.dataclasses import pad_detections_tensor
 from railyard.env import MODEL_ZOO_DIR
-from hybridnets.modeling.encoders import get_encoder
 from railyard.util.categories import lookup_category_list
 from railyard.util.visualization import normalize_tensor, apply_color, overlay_images_batch, draw_bounding_boxes
 
+from ..backbone import build_hybrid_backbone
 from .components import BiFPN, Regressor, Classifier, BiFPNDecoder
 from .anchors import Anchors
 
@@ -35,23 +34,25 @@ class HybridNet(pl.LightningModule):
         self.box_class_repeats = [3, 3, 3, 4, 4, 4, 5, 5, 5]
         self.pyramid_levels = [5, 5, 5, 5, 5, 5, 5, 5, 6]
         self.anchor_scales = [1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,]
-        anchor_scale = self.anchor_scales[self.backbone_coef]
 
         self.encoder = build_hybrid_backbone(cfg)
         self.bifpn, self.fpn_num_channels = build_hybrid_fpn(cfg)
         self.initialize_decoder(self.bifpn)
 
         # Detection
-        self.anchors = Anchors(self.anchors_scales, self.anchors_ratios, anchor_scale=anchor_scale,
+        self.anchors = Anchors(self.anchors_scales, self.anchors_ratios,
+                               anchor_scale=self.anchor_scales[self.backbone_coef],
                                 pyramid_levels=(torch.arange(self.pyramid_levels[self.backbone_coef]) + 3).tolist(),
                                 onnx_export=False)
 
-        self.regressor = Regressor(in_channels=self.fpn_num_channels, num_anchors=self.num_anchors,
+        self.regressor = Regressor(in_channels=self.fpn_num_channels,
+                                   num_anchors=self.num_anchors,
                                    num_layers=self.box_class_repeats[self.backbone_coef],
                                    pyramid_levels=self.pyramid_levels[self.backbone_coef],
                                    onnx_export=False)
 
-        self.classifier = Classifier(in_channels=self.fpn_num_channels, num_anchors=self.num_anchors,
+        self.classifier = Classifier(in_channels=self.fpn_num_channels,
+                                     num_anchors=self.num_anchors,
                                      num_classes=self.num_classes,
                                      num_layers=self.box_class_repeats[self.backbone_coef],
                                      pyramid_levels=self.pyramid_levels[self.backbone_coef],
@@ -193,23 +194,6 @@ class HybridNet(pl.LightningModule):
                         torch.nn.init.constant_(module.bias, bias_value)
                     else:
                         module.bias.data.zero_()
-
-
-def build_hybrid_backbone(cfg):
-    backbone_name = cfg.MODEL.BACKBONE.NAME
-    
-    if "efficientnet" in backbone_name:
-        backbone = get_encoder(
-            backbone_name,
-            in_channels=3,
-            depth=5,
-            weights='imagenet',
-        )
-    elif "regnet" in backbone_name:
-        backbone = timm.create_model(backbone_name, pretrained=True, features_only=True, out_indices=(1,2,3,4))
-    else:
-        raise Exception(f"Backbone not recognized: {backbone_name}")
-    return backbone
 
 def build_hybrid_fpn(cfg):
     backbone_name = cfg.MODEL.BACKBONE.NAME

@@ -373,14 +373,6 @@ class Conv3x3BNSwish(nn.Module):
 
         self.conv_sp = SeparableConvBlock(out_channels, onnx_export=False)
 
-        # self.block = nn.Sequential(
-        #     nn.Conv2d(
-        #         in_channels, out_channels, (3, 3), stride=1, padding=1, bias=False
-        #     ),
-        #     nn.GroupNorm(32, out_channels),
-        #     nn.ReLU(inplace=True),
-        # )
-
     def forward(self, x):
         x = self.conv_sp(self.swish(self.block(x)))
         if self.upsample:
