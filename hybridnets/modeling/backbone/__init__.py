@@ -1,1 +1,1 @@
-from .build import build_hybrid_backbone
+from .build import build_backbone

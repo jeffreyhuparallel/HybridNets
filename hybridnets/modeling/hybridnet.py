@@ -11,9 +11,9 @@ from railyard.env import MODEL_ZOO_DIR
 from railyard.util.categories import lookup_category_list
 from railyard.util.visualization import normalize_tensor, apply_color, overlay_images_batch, draw_bounding_boxes
 
-from ..backbone import build_hybrid_backbone
-from .components import BiFPN, Regressor, Classifier, BiFPNDecoder
-from .anchors import Anchors
+from .backbone import build_backbone
+from .fpn import build_fpn
+from .components import Regressor, Classifier, BiFPNDecoder, Anchors
 
 class HybridNet(pl.LightningModule):
     def __init__(self, cfg):
@@ -35,8 +35,8 @@ class HybridNet(pl.LightningModule):
         self.pyramid_levels = [5, 5, 5, 5, 5, 5, 5, 5, 6]
         self.anchor_scales = [1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,]
 
-        self.encoder = build_hybrid_backbone(cfg)
-        self.bifpn, self.fpn_num_channels = build_hybrid_fpn(cfg)
+        self.encoder = build_backbone(cfg)
+        self.bifpn, self.fpn_num_channels = build_fpn(cfg)
         self.initialize_decoder(self.bifpn)
 
         # Detection
@@ -194,46 +194,6 @@ class HybridNet(pl.LightningModule):
                         torch.nn.init.constant_(module.bias, bias_value)
                     else:
                         module.bias.data.zero_()
-
-def build_hybrid_fpn(cfg):
-    backbone_name = cfg.MODEL.BACKBONE.NAME
-    backbone_coef = cfg.MODEL.BACKBONE.COEFFICIENT
-    
-    fpn_num_cells_coef = [3, 4, 5, 6, 7, 7, 8, 8, 8]
-    fpn_num_channels_coef = [64, 88, 112, 160, 224, 288, 384, 384, 384]
-    if "efficientnet" in backbone_name:
-        conv_channel_coef = {
-            # the channels of P3/P4/P5.
-            0: [40, 112, 320],
-            1: [40, 112, 320],
-            2: [48, 120, 352],
-            3: [48, 136, 384],
-            4: [56, 160, 448],
-            5: [64, 176, 512],
-            6: [72, 200, 576],
-            7: [72, 200, 576],
-            8: [80, 224, 640],
-        }
-    elif "regnet" in backbone_name:
-        conv_channel_coef = {
-            3: [64, 160, 384], # regnetx_004
-        }
-    else:
-        raise Exception(f"Backbone not recognized: {backbone_name}")
-    
-    fpn_num_cells = fpn_num_cells_coef[backbone_coef]
-    fpn_num_channels = fpn_num_channels_coef[backbone_coef]
-    conv_channels = conv_channel_coef[backbone_coef]
-    
-    fpn_cells = [BiFPN(fpn_num_channels,
-                conv_channels,
-                first_time=(i == 0),
-                attention=backbone_coef < 6,
-                use_p8=backbone_coef > 7,
-                onnx_export=False)
-            for i in range(fpn_num_cells)]
-    fpn = nn.Sequential(*fpn_cells)
-    return fpn, fpn_num_channels
 
 def transform_anchors(anchors, regression, size):
     y_centers_a = (anchors[..., 0] + anchors[..., 2]) / 2

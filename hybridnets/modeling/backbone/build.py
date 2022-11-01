@@ -2,7 +2,7 @@ import timm
 
 from .encoders import get_encoder
 
-def build_hybrid_backbone(cfg):
+def build_backbone(cfg):
     backbone_name = cfg.MODEL.BACKBONE.NAME
     
     if "efficientnet" in backbone_name:
