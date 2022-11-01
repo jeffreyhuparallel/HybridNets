@@ -23,35 +23,13 @@ class Anchors(nn.Module):
         self.last_shape = None
         self.onnx_export = onnx_export
 
-    def forward(self, image, dtype=torch.float32):
-        """Generates multiscale anchor boxes.
-
-        Args:
-          image_size: integer number of input image size. The input image has the
-            same dimension for width and height. The image_size should be divided by
-            the largest feature stride 2^max_level.
-          anchor_scale: float number representing the scale of size of the base
-            anchor to the feature stride 2^level.
-          anchor_configs: a dictionary with keys as the levels of anchors and
-            values as a list of anchor configuration.
-
-        Returns:
-          anchor_boxes: a numpy array with shape [N, 4], which stacks anchors on all
-            feature levels.
-        Raises:
-          ValueError: input size must be the multiple of largest feature stride.
-        """
+    def forward(self, image):
         image_shape = image.shape[2:]
         if image_shape == self.last_shape and image.device in self.last_anchors:
             return self.last_anchors[image.device]
 
         if self.last_shape is None or self.last_shape != image_shape:
             self.last_shape = image_shape
-
-        if dtype == torch.float16:
-            dtype = np.float16
-        else:
-            dtype = np.float32
 
         boxes_all = []
         for stride in self.strides:
@@ -84,46 +62,9 @@ class Anchors(nn.Module):
             filename = 'anchor_{}x{}.npy'.format(image_shape[0], image_shape[1])
             np.save(filename, np.expand_dims(anchor_boxes, 0))
             print("saved anchor tensor to {}, load with np to use with onnx...".format(filename))
-        anchor_boxes = torch.from_numpy(anchor_boxes.astype(dtype)).to(image.device)
+        anchor_boxes = torch.from_numpy(anchor_boxes).to(image.device)
         anchor_boxes = anchor_boxes.unsqueeze(0)
 
         # save it for later use to reduce overhead
         self.last_anchors[image.device] = anchor_boxes
         return anchor_boxes
-      
-                    
-                    
-class BBoxTransform(nn.Module):
-
-    def forward(self, anchors, regression):
-        y_centers_a = (anchors[..., 0] + anchors[..., 2]) / 2
-        x_centers_a = (anchors[..., 1] + anchors[..., 3]) / 2
-        ha = anchors[..., 2] - anchors[..., 0]
-        wa = anchors[..., 3] - anchors[..., 1]
-
-        w = regression[..., 3].exp() * wa
-        h = regression[..., 2].exp() * ha
-
-        y_centers = regression[..., 0] * ha + y_centers_a
-        x_centers = regression[..., 1] * wa + x_centers_a
-
-        ymin = y_centers - h / 2.
-        xmin = x_centers - w / 2.
-        ymax = y_centers + h / 2.
-        xmax = x_centers + w / 2.
-
-        return torch.stack([xmin, ymin, xmax, ymax], dim=2)
-
-
-class ClipBoxes(nn.Module):
-
-    def forward(self, boxes, size):
-        width, height = size
-
-        boxes[:, :, 0] = torch.clamp(boxes[:, :, 0], min=0)
-        boxes[:, :, 1] = torch.clamp(boxes[:, :, 1], min=0)
-
-        boxes[:, :, 2] = torch.clamp(boxes[:, :, 2], max=width - 1)
-        boxes[:, :, 3] = torch.clamp(boxes[:, :, 3], max=height - 1)
-
-        return boxes

@@ -1,12 +1,8 @@
 import torch.nn as nn
 import torch
-from torchvision.ops.boxes import nms as nms_torch
 import torch.nn.functional as F
 import math
 from functools import partial
-
-def nms(dets, thresh):
-    return nms_torch(dets[:, :4], dets[:, 4], thresh)
 
 
 class SeparableConvBlock(nn.Module):
