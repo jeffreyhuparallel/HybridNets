@@ -2,7 +2,7 @@ MODEL:
   DETECTION_ON: True
   META_ARCHITECTURE: hybridnet
   BACKBONE:
-    NAME: "efficientnet"
+    NAME: "efficientnet-b3"
   DETECTION_HEAD:
     PRETRAINED: True
     CATEGORY_LIST: "bdd100k"

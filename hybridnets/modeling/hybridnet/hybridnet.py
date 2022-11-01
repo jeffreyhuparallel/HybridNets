@@ -19,9 +19,6 @@ from .anchors import Anchors
 class HybridNet(pl.LightningModule):
     def __init__(self, cfg):
         super().__init__()
-        self.cfg = cfg
-        self.backbone_name = cfg.MODEL.BACKBONE.NAME
-        self.compound_coef = 3 # efficientnet-b3
         self.size = cfg.INPUT.SIZE
         self.pretrained = cfg.MODEL.DETECTION_HEAD.PRETRAINED
         self.anchors_scales = cfg.MODEL.DETECTION_HEAD.ANCHORS_SCALES
@@ -29,85 +26,52 @@ class HybridNet(pl.LightningModule):
         self.nms_threshold = cfg.MODEL.DETECTION_HEAD.NMS_THRESHOLD
         self.vis_threshold = cfg.MODEL.DETECTION_HEAD.VIS_THRESHOLD
         
+        self.backbone_coef = cfg.MODEL.BACKBONE.COEFFICIENT
         self.cat_list = lookup_category_list(cfg.MODEL.DETECTION_HEAD.CATEGORY_LIST)
         self.num_classes = len(self.cat_list) - 1
         self.num_scales = len(self.anchors_scales)
         self.num_anchors = len(self.anchors_ratios) * self.num_scales
         
-        self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6, 7]
-        self.fpn_num_filters = [64, 88, 112, 160, 224, 288, 384, 384, 384]
-        self.fpn_cell_repeats = [3, 4, 5, 6, 7, 7, 8, 8, 8]
-        self.input_sizes = [512, 640, 768, 896, 1024, 1280, 1280, 1536, 1536]
         self.box_class_repeats = [3, 3, 3, 4, 4, 4, 5, 5, 5]
         self.pyramid_levels = [5, 5, 5, 5, 5, 5, 5, 5, 6]
-        self.anchor_scale = [1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,]
-        conv_channel_coef = {
-            # the channels of P3/P4/P5.
-            0: [40, 112, 320],
-            1: [40, 112, 320],
-            2: [48, 120, 352],
-            3: [48, 136, 384],
-            4: [56, 160, 448],
-            5: [64, 176, 512],
-            6: [72, 200, 576],
-            7: [72, 200, 576],
-            8: [80, 224, 640],
-        }
-        if "regnet" in self.backbone_name:
-            conv_channel_coef = {3: [64, 160, 384]} # regnetx_004
+        self.anchor_scales = [1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,]
+        anchor_scale = self.anchor_scales[self.backbone_coef]
 
-        self.encoder = self.build_backbone(cfg)
+        self.encoder = build_hybrid_backbone(cfg)
+        self.bifpn, self.fpn_num_channels = build_hybrid_fpn(cfg)
+        self.initialize_decoder(self.bifpn)
 
-        self.bifpndecoder = BiFPNDecoder(pyramid_channels=self.fpn_num_filters[self.compound_coef])
+        # Detection
+        self.anchors = Anchors(self.anchors_scales, self.anchors_ratios, anchor_scale=anchor_scale,
+                                pyramid_levels=(torch.arange(self.pyramid_levels[self.backbone_coef]) + 3).tolist(),
+                                onnx_export=False)
 
-        self.bifpn = nn.Sequential(
-            *[BiFPN(self.fpn_num_filters[self.compound_coef],
-                    conv_channel_coef[self.compound_coef],
-                    True if _ == 0 else False,
-                    attention=True if self.compound_coef < 6 else False,
-                    use_p8=self.compound_coef > 7,
-                    onnx_export=False)
-              for _ in range(self.fpn_cell_repeats[self.compound_coef])])
-
-        self.regressor = Regressor(in_channels=self.fpn_num_filters[self.compound_coef], num_anchors=self.num_anchors,
-                                   num_layers=self.box_class_repeats[self.compound_coef],
-                                   pyramid_levels=self.pyramid_levels[self.compound_coef],
+        self.regressor = Regressor(in_channels=self.fpn_num_channels, num_anchors=self.num_anchors,
+                                   num_layers=self.box_class_repeats[self.backbone_coef],
+                                   pyramid_levels=self.pyramid_levels[self.backbone_coef],
                                    onnx_export=False)
 
-        self.classifier = Classifier(in_channels=self.fpn_num_filters[self.compound_coef], num_anchors=self.num_anchors,
+        self.classifier = Classifier(in_channels=self.fpn_num_channels, num_anchors=self.num_anchors,
                                      num_classes=self.num_classes,
-                                     num_layers=self.box_class_repeats[self.compound_coef],
-                                     pyramid_levels=self.pyramid_levels[self.compound_coef],
+                                     num_layers=self.box_class_repeats[self.backbone_coef],
+                                     pyramid_levels=self.pyramid_levels[self.backbone_coef],
                                      onnx_export=False)
 
-        self.anchors = Anchors(self.anchors_scales, self.anchors_ratios, anchor_scale=self.anchor_scale[self.compound_coef],
-                                pyramid_levels=(torch.arange(self.pyramid_levels[self.compound_coef]) + 3).tolist(),
-                                onnx_export=False)
-    
+        # Segmentation
+        self.bifpndecoder = BiFPNDecoder(pyramid_channels=self.fpn_num_channels)
         self.initialize_decoder(self.bifpndecoder)
-        self.initialize_decoder(self.bifpn)
+    
         self.initialize_weights()
         
         if self.pretrained:
-            if self.backbone_name == "efficientnet":
+            backbone_name = cfg.MODEL.BACKBONE.NAME
+            if "efficientnet" in backbone_name:
                 weights_path = os.path.join(MODEL_ZOO_DIR, "hybrid_efficientnet_d3.pth")
-            else:
+            elif "regnet" in backbone_name:
                 weights_path = os.path.join(MODEL_ZOO_DIR, "hybrid_regnetx_004.pth")
+            else:
+                raise Exception(f"Backbone not recognized: {backbone_name}")
             self.load_state_dict(torch.load(weights_path), strict=False)
-    
-    def build_backbone(self, cfg):
-        if "efficientnet" in self.backbone_name:
-            # EfficientNet_Pytorch
-            backbone = get_encoder(
-                'efficientnet-b' + str(self.backbone_compound_coef[self.compound_coef]),
-                in_channels=3,
-                depth=5,
-                weights='imagenet',
-            )
-            return backbone
-        
-        backbone = timm.create_model(self.backbone_name, pretrained=True, features_only=True, out_indices=(1,2,3,4))  # P2,P3,P4,P5
-        return backbone
 
     def forward(self, inp):
         x = inp['image']
@@ -115,13 +79,14 @@ class HybridNet(pl.LightningModule):
         p2, p3, p4, p5 = self.encoder(x)[-4:]
         features = self.bifpn((p3, p4, p5))
 
+        # Detection
         regression = self.regressor(features)
         classification = self.classifier(features)
         anchors = self.anchors(x)
         
-        # For segmentation
-        # p3,p4,p5,p6,p7 = features
-        # outputs = self.bifpndecoder((p2,p3,p4,p5,p6,p7))
+        # Segmentation
+        p3,p4,p5,p6,p7 = features
+        outputs = self.bifpndecoder((p2,p3,p4,p5,p6,p7))
         
         target = {
             "anchors": anchors,
@@ -141,8 +106,8 @@ class HybridNet(pl.LightningModule):
         scores_all = []
         labels_all = []
         for i in range(classification.shape[0]):
-            classification_per = classification[i].permute(1, 0)
-            scores_per, labels_per = classification_per.max(dim=0)
+            classification_per = classification[i]
+            scores_per, labels_per = classification_per.max(dim=1)
             anchors_per = anchors_transformed[i]
             
             nms_idxs = torchvision.ops.boxes.batched_nms(anchors_per, scores_per, labels_per, iou_threshold=self.nms_threshold)
@@ -229,6 +194,62 @@ class HybridNet(pl.LightningModule):
                     else:
                         module.bias.data.zero_()
 
+
+def build_hybrid_backbone(cfg):
+    backbone_name = cfg.MODEL.BACKBONE.NAME
+    
+    if "efficientnet" in backbone_name:
+        backbone = get_encoder(
+            backbone_name,
+            in_channels=3,
+            depth=5,
+            weights='imagenet',
+        )
+    elif "regnet" in backbone_name:
+        backbone = timm.create_model(backbone_name, pretrained=True, features_only=True, out_indices=(1,2,3,4))
+    else:
+        raise Exception(f"Backbone not recognized: {backbone_name}")
+    return backbone
+
+def build_hybrid_fpn(cfg):
+    backbone_name = cfg.MODEL.BACKBONE.NAME
+    backbone_coef = cfg.MODEL.BACKBONE.COEFFICIENT
+    
+    fpn_num_cells_coef = [3, 4, 5, 6, 7, 7, 8, 8, 8]
+    fpn_num_channels_coef = [64, 88, 112, 160, 224, 288, 384, 384, 384]
+    if "efficientnet" in backbone_name:
+        conv_channel_coef = {
+            # the channels of P3/P4/P5.
+            0: [40, 112, 320],
+            1: [40, 112, 320],
+            2: [48, 120, 352],
+            3: [48, 136, 384],
+            4: [56, 160, 448],
+            5: [64, 176, 512],
+            6: [72, 200, 576],
+            7: [72, 200, 576],
+            8: [80, 224, 640],
+        }
+    elif "regnet" in backbone_name:
+        conv_channel_coef = {
+            3: [64, 160, 384], # regnetx_004
+        }
+    else:
+        raise Exception(f"Backbone not recognized: {backbone_name}")
+    
+    fpn_num_cells = fpn_num_cells_coef[backbone_coef]
+    fpn_num_channels = fpn_num_channels_coef[backbone_coef]
+    conv_channels = conv_channel_coef[backbone_coef]
+    
+    fpn_cells = [BiFPN(fpn_num_channels,
+                conv_channels,
+                first_time=(i == 0),
+                attention=backbone_coef < 6,
+                use_p8=backbone_coef > 7,
+                onnx_export=False)
+            for i in range(fpn_num_cells)]
+    fpn = nn.Sequential(*fpn_cells)
+    return fpn, fpn_num_channels
 
 def transform_anchors(anchors, regression, size):
     y_centers_a = (anchors[..., 0] + anchors[..., 2]) / 2
