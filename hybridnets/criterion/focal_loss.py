@@ -42,7 +42,6 @@ class FocalLoss(nn.Module):
         anchor_ctr_y = anchor[:, 0] + 0.5 * anchor_heights
 
         for j in range(batch_size):
-
             classification = classifications[j, :, :]
             regression = regressions[j, :, :]
             
@@ -55,34 +54,18 @@ class FocalLoss(nn.Module):
             classification = torch.clamp(classification, 1e-4, 1.0 - 1e-4)
 
             if bbox_annotation.shape[0] == 0:
-                if torch.cuda.is_available():
+                alpha_factor = torch.ones_like(classification) * alpha
+                alpha_factor = alpha_factor.cuda()
+                alpha_factor = 1. - alpha_factor
+                focal_weight = classification
+                focal_weight = alpha_factor * torch.pow(focal_weight, gamma)
 
-                    alpha_factor = torch.ones_like(classification) * alpha
-                    alpha_factor = alpha_factor.cuda()
-                    alpha_factor = 1. - alpha_factor
-                    focal_weight = classification
-                    focal_weight = alpha_factor * torch.pow(focal_weight, gamma)
+                bce = -(torch.log(1.0 - classification))
 
-                    bce = -(torch.log(1.0 - classification))
+                cls_loss = focal_weight * bce
 
-                    cls_loss = focal_weight * bce
-
-                    regression_losses.append(torch.tensor(0).to(dtype).cuda())
-                    classification_losses.append(cls_loss.sum())
-                else:
-
-                    alpha_factor = torch.ones_like(classification) * alpha
-                    alpha_factor = 1. - alpha_factor
-                    focal_weight = classification
-                    focal_weight = alpha_factor * torch.pow(focal_weight, gamma)
-
-                    bce = -(torch.log(1.0 - classification))
-
-                    cls_loss = focal_weight * bce
-
-                    regression_losses.append(torch.tensor(0).to(dtype))
-                    classification_losses.append(cls_loss.sum())
-
+                regression_losses.append(torch.tensor(0).to(dtype).cuda())
+                classification_losses.append(cls_loss.sum())
                 continue
 
             IoU = calc_iou(anchor[:, :], bbox_annotation[:, :4])
@@ -108,8 +91,7 @@ class FocalLoss(nn.Module):
             targets[positive_indices, assigned_annotations[positive_indices, 4].long()] = 1
     
             alpha_factor = torch.ones_like(targets) * alpha
-            if torch.cuda.is_available():
-                alpha_factor = alpha_factor.cuda()
+            alpha_factor = alpha_factor.cuda()
 
             alpha_factor = torch.where(torch.eq(targets, 1.), alpha_factor, 1. - alpha_factor)
             focal_weight = torch.where(torch.eq(targets, 1.), 1. - classification, classification)
@@ -120,8 +102,7 @@ class FocalLoss(nn.Module):
             cls_loss = focal_weight * bce
 
             zeros = torch.zeros_like(cls_loss)
-            if torch.cuda.is_available():
-                zeros = zeros.cuda()
+            zeros = zeros.cuda()
             cls_loss = torch.where(torch.ne(targets, -1.0), cls_loss, zeros)
 
             classification_losses.append(cls_loss.sum() / torch.clamp(num_positive_anchors.to(dtype), min=1.0))
@@ -159,10 +140,9 @@ class FocalLoss(nn.Module):
                 )
                 regression_losses.append(regression_loss.mean())
             else:
-                if torch.cuda.is_available():
-                    regression_losses.append(torch.tensor(0).to(dtype).cuda())
-                else:
-                    regression_losses.append(torch.tensor(0).to(dtype))
-
-        return torch.stack(classification_losses).mean(dim=0, keepdim=True), \
-               torch.stack(regression_losses).mean(dim=0, keepdim=True) * 50  # https://github.com/google/automl/blob/6fdd1de778408625c1faf368a327fe36ecd41bf7/efficientdet/hparams_config.py#L233
+                regression_losses.append(torch.tensor(0).to(dtype).cuda())
+                    
+        cls_loss = torch.stack(classification_losses).mean(dim=0, keepdim=True)
+        det_loss = torch.stack(regression_losses).mean(dim=0, keepdim=True) * 50 # https://github.com/google/automl/blob/6fdd1de778408625c1faf368a327fe36ecd41bf7/efficientdet/hparams_config.py#L233
+        return cls_loss, det_loss
+                 

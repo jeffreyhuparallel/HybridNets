@@ -21,13 +21,13 @@ class HybridNet(pl.LightningModule):
         self.cfg = cfg
         self.backbone_name = cfg.MODEL.BACKBONE.NAME
         self.compound_coef = 3 # efficientnet-b3
+        self.size = cfg.INPUT.SIZE
         self.pretrained = cfg.MODEL.DETECTION_HEAD.PRETRAINED
         self.anchors_scales = cfg.MODEL.DETECTION_HEAD.ANCHORS_SCALES
         self.anchors_ratios = cfg.MODEL.DETECTION_HEAD.ANCHORS_RATIOS
         self.num_scales = len(self.anchors_scales)
-        self.conf_thres = 0.25
-        self.iou_thres = 0.3
-        self.vis_threshold = 0.25
+        self.nms_threshold = cfg.MODEL.DETECTION_HEAD.NMS_THRESHOLD
+        self.vis_threshold = cfg.MODEL.DETECTION_HEAD.VIS_THRESHOLD
         
         self.cat_list = lookup_category_list(cfg.MODEL.DETECTION_HEAD.CATEGORY_LIST)
         self.num_classes = len(self.cat_list) - 1
@@ -124,8 +124,6 @@ class HybridNet(pl.LightningModule):
         anchors = self.anchors(x, x.dtype)
         
         target = {
-            "image": x,
-            "features": features,
             "regression": regression,
             "classification": classification,
             "anchors": anchors,
@@ -133,18 +131,7 @@ class HybridNet(pl.LightningModule):
         return target
     
     def postprocess(self, target):
-        image = target["image"]
-        features = target["features"]
-        regression = target["regression"]
-        classification = target["classification"]
-        anchors = target["anchors"]
-        
-        regressBoxes = BBoxTransform()
-        clipBoxes = ClipBoxes()
-        det = postprocess(image,
-                        anchors, regression, classification,
-                        regressBoxes, clipBoxes,
-                        self.conf_thres, self.iou_thres)
+        det = postprocess(target, self.nms_threshold, self.size)
         
         boxes_all = []
         scores_all = []
@@ -162,7 +149,6 @@ class HybridNet(pl.LightningModule):
             labels_all.append(labels)
         
         out = {
-            "detection": det,
             "detection_boxes": boxes_all,
             "detection_scores": scores_all,
             "detection_labels": labels_all,
@@ -219,13 +205,21 @@ class HybridNet(pl.LightningModule):
         init_weights(self)
 
 
-def postprocess(x, anchors, regression, classification, regressBoxes, clipBoxes, threshold, iou_threshold):
+def postprocess(target, nms_threshold, size):
+    anchors = target["anchors"]
+    regression = target["regression"]
+    classification = target["classification"]
+    threshold = 0.25 # Sort and pad instead
+        
+    regressBoxes = BBoxTransform()
+    clipBoxes = ClipBoxes()
     transformed_anchors = regressBoxes(anchors, regression)
-    transformed_anchors = clipBoxes(transformed_anchors, x)
+    transformed_anchors = clipBoxes(transformed_anchors, size)
+    
     scores = torch.max(classification, dim=2, keepdim=True)[0]
     scores_over_thresh = (scores > threshold)[:, :, 0]
     out = []
-    for i in range(x.shape[0]):
+    for i in range(scores.shape[0]):
         if scores_over_thresh[i].sum() == 0:
             out.append({
                 'rois': np.array(()),
@@ -238,7 +232,7 @@ def postprocess(x, anchors, regression, classification, regressBoxes, clipBoxes,
         transformed_anchors_per = transformed_anchors[i, scores_over_thresh[i, :], ...]
         scores_per = scores[i, scores_over_thresh[i, :], ...]
         scores_, classes_ = classification_per.max(dim=0)
-        anchors_nms_idx = torchvision.ops.boxes.batched_nms(transformed_anchors_per, scores_per[:, 0], classes_, iou_threshold=iou_threshold)
+        anchors_nms_idx = torchvision.ops.boxes.batched_nms(transformed_anchors_per, scores_per[:, 0], classes_, iou_threshold=nms_threshold)
 
         if anchors_nms_idx.shape[0] != 0:
             classes_ = classes_[anchors_nms_idx]
