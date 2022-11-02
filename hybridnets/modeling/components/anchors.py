@@ -1,13 +1,17 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import pytorch_lightning as pl
 
 import itertools
               
-class Anchors(nn.Module):
+class Anchors(pl.LightningModule):
 
-    def __init__(self, scales, ratios, anchor_scale=4., pyramid_levels=None, onnx_export=False):
+    def __init__(self, scales, ratios, size, anchor_scale=4., pyramid_levels=None):
         super().__init__()
+        self.scales = np.array(scales)
+        self.ratios = ratios
+        self.size = size
         self.anchor_scale = anchor_scale
 
         if pyramid_levels is None:
@@ -16,33 +20,29 @@ class Anchors(nn.Module):
             self.pyramid_levels = pyramid_levels
 
         self.strides = [2 ** x for x in self.pyramid_levels]
-        self.scales = np.array(scales)
-        self.ratios = ratios
+        
+        anchor_boxes = self.make_anchor_boxes()
+        anchor_boxes = torch.from_numpy(anchor_boxes)
+        anchor_boxes = anchor_boxes.unsqueeze(0)
+        self.register_buffer("anchor_boxes", anchor_boxes)
 
-        self.last_anchors = {}
-        self.last_shape = None
-        self.onnx_export = onnx_export
-
-    def forward(self, image):
-        image_shape = image.shape[2:]
-        if image_shape == self.last_shape and image.device in self.last_anchors:
-            return self.last_anchors[image.device]
-
-        if self.last_shape is None or self.last_shape != image_shape:
-            self.last_shape = image_shape
-
+    def get_anchor_boxes(self):
+        return self.anchor_boxes
+    
+    def make_anchor_boxes(self):
+        w, h = self.size
         boxes_all = []
         for stride in self.strides:
             boxes_level = []
             for scale, ratio in itertools.product(self.scales, self.ratios):
-                if image_shape[1] % stride != 0:
-                    raise ValueError('input size must be divided by the stride.')
+                if w % stride != 0 or h % stride != 0:
+                    raise ValueError(f'input size must be divided by the stride. ({w},{h})')
                 base_anchor_size = self.anchor_scale * stride * scale
                 anchor_size_x_2 = base_anchor_size * ratio[0] / 2.0
                 anchor_size_y_2 = base_anchor_size * ratio[1] / 2.0
 
-                x = np.arange(stride / 2, image_shape[1], stride)
-                y = np.arange(stride / 2, image_shape[0], stride)
+                x = np.arange(stride / 2, w, stride)
+                y = np.arange(stride / 2, h, stride)
                 xv, yv = np.meshgrid(x, y)
                 xv = xv.reshape(-1)
                 yv = yv.reshape(-1)
@@ -57,14 +57,6 @@ class Anchors(nn.Module):
             boxes_all.append(boxes_level.reshape([-1, 4]))
 
         anchor_boxes = np.vstack(boxes_all)
-
-        if self.onnx_export:
-            filename = 'anchor_{}x{}.npy'.format(image_shape[0], image_shape[1])
-            np.save(filename, np.expand_dims(anchor_boxes, 0))
-            print("saved anchor tensor to {}, load with np to use with onnx...".format(filename))
-        anchor_boxes = torch.from_numpy(anchor_boxes).to(image.device)
-        anchor_boxes = anchor_boxes.unsqueeze(0)
-
-        # save it for later use to reduce overhead
-        self.last_anchors[image.device] = anchor_boxes
+        anchor_boxes = anchor_boxes.astype(dtype=np.float32)
         return anchor_boxes
+    

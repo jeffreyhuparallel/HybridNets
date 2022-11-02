@@ -40,10 +40,9 @@ class HybridNet(pl.LightningModule):
         self.initialize_decoder(self.bifpn)
 
         # Detection
-        self.anchors = Anchors(self.anchors_scales, self.anchors_ratios,
+        self.anchors = Anchors(self.anchors_scales, self.anchors_ratios, self.size,
                                anchor_scale=self.anchor_scales[self.backbone_coef],
-                                pyramid_levels=(torch.arange(self.pyramid_levels[self.backbone_coef]) + 3).tolist(),
-                                onnx_export=False)
+                                pyramid_levels=(torch.arange(self.pyramid_levels[self.backbone_coef]) + 3).tolist())
 
         self.regressor = Regressor(in_channels=self.fpn_num_channels,
                                    num_anchors=self.num_anchors,
@@ -81,9 +80,9 @@ class HybridNet(pl.LightningModule):
         features = self.bifpn((p3, p4, p5))
 
         # Detection
+        anchors = self.anchors.get_anchor_boxes()
         regression = self.regressor(features)
         classification = self.classifier(features)
-        anchors = self.anchors(x)
         
         # Segmentation
         p3,p4,p5,p6,p7 = features
