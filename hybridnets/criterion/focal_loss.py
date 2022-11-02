@@ -74,9 +74,7 @@ class FocalLoss(nn.Module):
            
 
             targets = torch.zeros_like(classification)
-            
-            if torch.cuda.is_available():
-                targets = targets.cuda()
+            targets = targets.cuda()
             
             assigned_annotations = bbox_annotation[IoU_argmax, :]
             
